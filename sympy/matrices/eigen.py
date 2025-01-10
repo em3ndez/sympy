@@ -4,29 +4,37 @@ from collections import Counter
 from mpmath import mp, workprec
 from mpmath.libmp.libmpf import prec_to_dps
 
-from sympy.core.compatibility import default_sort_key
+from sympy.core.sorting import default_sort_key
 from sympy.core.evalf import DEFAULT_MAXPREC, PrecisionExhausted
 from sympy.core.logic import fuzzy_and, fuzzy_or
 from sympy.core.numbers import Float
 from sympy.core.sympify import _sympify
 from sympy.functions.elementary.miscellaneous import sqrt
-from sympy.polys import roots, CRootOf, EX
+from sympy.polys import roots, CRootOf, ZZ, QQ, EX
 from sympy.polys.matrices import DomainMatrix
 from sympy.polys.matrices.eigen import dom_eigenvects, dom_eigenvects_to_sympy
-from sympy.simplify import nsimplify, simplify as _simplify
-from sympy.utilities.exceptions import SymPyDeprecationWarning
+from sympy.polys.polytools import gcd
 
-from .common import MatrixError, NonSquareMatrixError
+from .exceptions import MatrixError, NonSquareMatrixError
 from .determinant import _find_reasonable_pivot
 
-from .utilities import _iszero
+from .utilities import _iszero, _simplify
+
+
+__doctest_requires__ = {
+    ('_is_indefinite',
+     '_is_negative_definite',
+     '_is_negative_semidefinite',
+     '_is_positive_definite',
+     '_is_positive_semidefinite'): ['matplotlib'],
+}
 
 
 def _eigenvals_eigenvects_mpmath(M):
     norm2 = lambda v: mp.sqrt(sum(i**2 for i in v))
 
     v1 = None
-    prec = max([x._prec for x in M.atoms(Float)])
+    prec = max(x._prec for x in M.atoms(Float))
     eps = 2**-prec
 
     while prec < DEFAULT_MAXPREC:
@@ -124,7 +132,7 @@ def _eigenvals(
     Examples
     ========
 
-    >>> from sympy.matrices import Matrix
+    >>> from sympy import Matrix
     >>> M = Matrix(3, 3, [0, 1, 1, 1, 0, 0, 1, 1, 1])
     >>> M.eigenvals()
     {-1: 1, 0: 1, 2: 1}
@@ -132,7 +140,7 @@ def _eigenvals(
     See Also
     ========
 
-    MatrixDeterminant.charpoly
+    MatrixBase.charpoly
     eigenvects
 
     Notes
@@ -157,10 +165,13 @@ def _eigenvals(
     if not M.is_square:
         raise NonSquareMatrixError("{} must be a square matrix.".format(M))
 
-    if all(x.is_number for x in M) and M.has(Float):
-        return _eigenvals_mpmath(M, multiple=multiple)
+    if M._rep.domain not in (ZZ, QQ):
+        # Skip this check for ZZ/QQ because it can be slow
+        if all(x.is_number for x in M) and M.has(Float):
+            return _eigenvals_mpmath(M, multiple=multiple)
 
     if rational:
+        from sympy.simplify import nsimplify
         M = M.applyfunc(
             lambda x: nsimplify(x, rational=True) if x.has(Float) else x)
 
@@ -188,7 +199,16 @@ def _eigenvals_list(
     M, error_when_incomplete=True, simplify=False, **flags):
     iblocks = M.strongly_connected_components()
     all_eigs = []
+    is_dom = M._rep.domain in (ZZ, QQ)
     for b in iblocks:
+
+        # Fast path for a 1x1 block:
+        if is_dom and len(b) == 1:
+            index = b[0]
+            val = M[index, index]
+            all_eigs.append(val)
+            continue
+
         block = M[b, b]
 
         if isinstance(simplify, FunctionType):
@@ -199,11 +219,8 @@ def _eigenvals_list(
         eigs = roots(charpoly, multiple=True, **flags)
 
         if len(eigs) != block.rows:
-            degree = int(charpoly.degree())
-            f = charpoly.as_expr()
-            x = charpoly.gen
             try:
-                eigs = [CRootOf(f, x, idx) for idx in range(degree)]
+                eigs = charpoly.all_roots(multiple=True)
             except NotImplementedError:
                 if error_when_incomplete:
                     raise MatrixError(eigenvals_error_message)
@@ -223,7 +240,16 @@ def _eigenvals_dict(
     M, error_when_incomplete=True, simplify=False, **flags):
     iblocks = M.strongly_connected_components()
     all_eigs = {}
+    is_dom = M._rep.domain in (ZZ, QQ)
     for b in iblocks:
+
+        # Fast path for a 1x1 block:
+        if is_dom and len(b) == 1:
+            index = b[0]
+            val = M[index, index]
+            all_eigs[val] = all_eigs.get(val, 0) + 1
+            continue
+
         block = M[b, b]
 
         if isinstance(simplify, FunctionType):
@@ -234,11 +260,8 @@ def _eigenvals_dict(
         eigs = roots(charpoly, multiple=False, **flags)
 
         if sum(eigs.values()) != block.rows:
-            degree = int(charpoly.degree())
-            f = charpoly.as_expr()
-            x = charpoly.gen
             try:
-                eigs = {CRootOf(f, x, idx): 1 for idx in range(degree)}
+                eigs = dict(charpoly.all_roots(multiple=False))
             except NotImplementedError:
                 if error_when_incomplete:
                     raise MatrixError(eigenvals_error_message)
@@ -362,7 +385,7 @@ def _eigenvects(M, error_when_incomplete=True, iszerofunc=_iszero, *, chop=False
     Examples
     ========
 
-    >>> from sympy.matrices import Matrix
+    >>> from sympy import Matrix
     >>> M = Matrix(3, 3, [0, 1, 1, 1, 0, 0, 1, 1, 1])
     >>> M.eigenvects()
     [(-1, 1, [Matrix([
@@ -380,7 +403,7 @@ def _eigenvects(M, error_when_incomplete=True, iszerofunc=_iszero, *, chop=False
     ========
 
     eigenvals
-    MatrixSubspaces.nullspace
+    MatrixBase.nullspace
     """
     simplify = flags.get('simplify', True)
     primitive = flags.get('simplify', False)
@@ -394,6 +417,7 @@ def _eigenvects(M, error_when_incomplete=True, iszerofunc=_iszero, *, chop=False
     if has_floats:
         if all(x.is_number for x in M):
             return _eigenvects_mpmath(M)
+        from sympy.simplify import nsimplify
         M = M.applyfunc(lambda x: nsimplify(x, rational=True))
 
     ret = _eigenvects_DOM(M)
@@ -404,7 +428,6 @@ def _eigenvects(M, error_when_incomplete=True, iszerofunc=_iszero, *, chop=False
         # if the primitive flag is set, get rid of any common
         # integer denominators
         def denom_clean(l):
-            from sympy import gcd
             return [(v / gcd(list(v))).applyfunc(simpfunc) for v in l]
 
         ret = [(val, mult, denom_clean(es)) for val, mult, es in ret]
@@ -477,24 +500,9 @@ def _is_diagonalizable(M, reals_only=False, **kwargs):
     See Also
     ========
 
-    is_diagonal
+    sympy.matrices.matrixbase.MatrixBase.is_diagonal
     diagonalize
     """
-
-    if 'clear_cache' in kwargs:
-        SymPyDeprecationWarning(
-            feature='clear_cache',
-            deprecated_since_version=1.4,
-            issue=15887
-        ).warn()
-
-    if 'clear_subproducts' in kwargs:
-        SymPyDeprecationWarning(
-            feature='clear_subproducts',
-            deprecated_since_version=1.4,
-            issue=15887
-        ).warn()
-
     if not M.is_square:
         return False
 
@@ -570,11 +578,11 @@ def _eval_bidiag_hholder(M):
 
 def _bidiagonal_decomposition(M, upper=True):
     """
-    Returns (U,B,V.H)
+    Returns $(U,B,V.H)$ for
 
-    $A = UBV^{H}$
+    $$A = UBV^{H}$$
 
-    where A is the input matrix, and B is its Bidiagonalized form
+    where $A$ is the input matrix, and $B$ is its Bidiagonalized form
 
     Note: Bidiagonal Computation can hang for symbolic matrices.
 
@@ -587,19 +595,19 @@ def _bidiagonal_decomposition(M, upper=True):
     References
     ==========
 
-    1. Algorith 5.4.2, Matrix computations by Golub and Van Loan, 4th edition
-    2. Complex Matrix Bidiagonalization : https://github.com/vslobody/Householder-Bidiagonalization
+    .. [1] Algorithm 5.4.2, Matrix computations by Golub and Van Loan, 4th edition
+    .. [2] Complex Matrix Bidiagonalization, https://github.com/vslobody/Householder-Bidiagonalization
 
     """
 
-    if type(upper) is not bool:
+    if not isinstance(upper, bool):
         raise ValueError("upper must be a boolean")
 
-    if not upper:
-        X = _bidiagonal_decmp_hholder(M.H)
-        return X[2].H, X[1].H, X[0].H
+    if upper:
+        return _bidiagonal_decmp_hholder(M)
 
-    return _bidiagonal_decmp_hholder(M)
+    X = _bidiagonal_decmp_hholder(M.H)
+    return X[2].H, X[1].H, X[0].H
 
 
 def _bidiagonalize(M, upper=True):
@@ -617,18 +625,17 @@ def _bidiagonalize(M, upper=True):
     References
     ==========
 
-    1. Algorith 5.4.2, Matrix computations by Golub and Van Loan, 4th edition
-    2. Complex Matrix Bidiagonalization : https://github.com/vslobody/Householder-Bidiagonalization
+    .. [1] Algorithm 5.4.2, Matrix computations by Golub and Van Loan, 4th edition
+    .. [2] Complex Matrix Bidiagonalization : https://github.com/vslobody/Householder-Bidiagonalization
 
     """
 
-    if type(upper) is not bool:
+    if not isinstance(upper, bool):
         raise ValueError("upper must be a boolean")
 
-    if not upper:
-        return _eval_bidiag_hholder(M.H).H
-
-    return _eval_bidiag_hholder(M)
+    if upper:
+        return _eval_bidiag_hholder(M)
+    return _eval_bidiag_hholder(M.H).H
 
 
 def _diagonalize(M, reals_only=False, sort=False, normalize=False):
@@ -652,7 +659,7 @@ def _diagonalize(M, reals_only=False, sort=False, normalize=False):
     Examples
     ========
 
-    >>> from sympy.matrices import Matrix
+    >>> from sympy import Matrix
     >>> M = Matrix(3, 3, [1, 2, 0, 0, 3, 0, 2, -4, 2])
     >>> M
     Matrix([
@@ -679,7 +686,7 @@ def _diagonalize(M, reals_only=False, sort=False, normalize=False):
     See Also
     ========
 
-    is_diagonal
+    sympy.matrices.matrixbase.MatrixBase.is_diagonal
     is_diagonalizable
     """
 
@@ -824,6 +831,8 @@ def _is_positive_semidefinite_cholesky(M):
 
         if M[k, k].is_negative or pivot_val.is_negative:
             return False
+        elif not (M[k, k].is_nonnegative and pivot_val.is_nonnegative):
+            return None
 
         if pivot > 0:
             M.col_swap(k, k+pivot)
@@ -993,7 +1002,7 @@ _doc_positive_definite = \
     hermitian) and we can defer most of the studies to symmetric or
     hermitian positive definite matrices.
 
-    But it is a different problem for the existance of Cholesky
+    But it is a different problem for the existence of Cholesky
     decomposition. Because even though a non symmetric or a non
     hermitian matrix can be positive definite, Cholesky or LDL
     decomposition does not exist because the decompositions require the
@@ -1004,7 +1013,7 @@ _doc_positive_definite = \
 
     .. [1] https://en.wikipedia.org/wiki/Definiteness_of_a_matrix#Eigenvalues
 
-    .. [2] http://mathworld.wolfram.com/PositiveDefiniteMatrix.html
+    .. [2] https://mathworld.wolfram.com/PositiveDefiniteMatrix.html
 
     .. [3] Johnson, C. R. "Positive Definite Matrices." Amer.
         Math. Monthly 77, 259-264 1970.
@@ -1036,7 +1045,7 @@ def _jordan_form(M, calc_transform=True, *, chop=False):
     Examples
     ========
 
-    >>> from sympy.matrices import Matrix
+    >>> from sympy import Matrix
     >>> M = Matrix([[ 6,  5, -2, -3], [-3, -1,  3,  3], [ 2,  1, -2, -3], [-1,  1,  5,  5]])
     >>> P, J = M.jordan_form()
     >>> J
@@ -1162,6 +1171,7 @@ def _jordan_form(M, calc_transform=True, *, chop=False):
 
     # roots doesn't like Floats, so replace them with Rationals
     if has_floats:
+        from sympy.simplify import nsimplify
         mat = mat.applyfunc(lambda x: nsimplify(x, rational=True))
 
     # first calculate the jordan block structure
@@ -1178,7 +1188,7 @@ def _jordan_form(M, calc_transform=True, *, chop=False):
     # and so are diagonalizable.  In this case, don't
     # do extra work!
     if len(eigs.keys()) == mat.cols:
-        blocks     = list(sorted(eigs.keys(), key=default_sort_key))
+        blocks     = sorted(eigs.keys(), key=default_sort_key)
         jordan_mat = mat.diag(*blocks)
 
         if not calc_transform:
@@ -1207,7 +1217,7 @@ def _jordan_form(M, calc_transform=True, *, chop=False):
         size_nums.reverse()
 
         block_structure.extend(
-            (eig, size) for size, num in size_nums for _ in range(num))
+            [(eig, size) for size, num in size_nums for _ in range(num)])
 
     jordan_form_size = sum(size for eig, size in block_structure)
 
@@ -1272,7 +1282,7 @@ def _left_eigenvects(M, **flags):
     Examples
     ========
 
-    >>> from sympy.matrices import Matrix
+    >>> from sympy import Matrix
     >>> M = Matrix([[0, 1, 1], [1, 0, 0], [1, 1, 1]])
     >>> M.eigenvects()
     [(-1, 1, [Matrix([

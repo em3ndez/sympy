@@ -1,31 +1,40 @@
 """This tests sympy/core/basic.py with (ideally) no reference to subclasses
 of Basic or Atom."""
-
 import collections
+from typing import TypeVar, Generic
 
-from sympy.core.basic import (Basic, Atom, preorder_traversal, as_Basic,
+from sympy.assumptions.ask import Q
+from sympy.core.basic import (Basic, Atom, as_Basic,
     _atomic, _aresame)
+from sympy.core.containers import Tuple
+from sympy.core.function import Function, Lambda
+from sympy.core.numbers import I, pi, Float
 from sympy.core.singleton import S
 from sympy.core.symbol import symbols, Symbol, Dummy
-from sympy.core.sympify import SympifyError
-from sympy.core.function import Function, Lambda
-from sympy.core.compatibility import default_sort_key
-
-from sympy import sin, Q, cos, gamma, Tuple, Integral, Sum
+from sympy.concrete.summations import Sum
+from sympy.functions.elementary.trigonometric import (cos, sin)
+from sympy.functions.special.gamma_functions import gamma
+from sympy.integrals.integrals import Integral
 from sympy.functions.elementary.exponential import exp
-from sympy.testing.pytest import raises
-from sympy.core import I, pi
+from sympy.testing.pytest import raises, warns_deprecated_sympy
+from sympy.functions.elementary.complexes import Abs, sign
+from sympy.functions.elementary.piecewise import Piecewise
+from sympy.core.relational import Eq
 
 b1 = Basic()
 b2 = Basic(b1)
 b3 = Basic(b2)
 b21 = Basic(b2, b1)
+T = TypeVar('T')
 
 
 def test__aresame():
-    assert not _aresame(Basic([]), Basic())
-    assert not _aresame(Basic([]), Basic(()))
-    assert not _aresame(Basic(2), Basic(2.))
+    assert not _aresame(Basic(Tuple()), Basic())
+    for i, j in [(S(2), S(2.)), (1., Float(1))]:
+        for do in range(2):
+            assert not _aresame(Basic(i), Basic(j))
+            assert not _aresame(i, j)
+            i, j = j, i
 
 
 def test_structure():
@@ -108,7 +117,8 @@ def test_has():
     assert b21.has(Basic)
     assert not b1.has(b21, b3)
     assert not b21.has()
-    raises(SympifyError, lambda: Symbol("x").has("x"))
+    assert not b21.has(str)
+    assert not Symbol("x").has("x")
 
 
 def test_subs():
@@ -123,11 +133,11 @@ def test_subs():
     assert b21.subs(collections.OrderedDict([(b2, b1), (b1, b2)])) == Basic(b2, b2)
 
     raises(ValueError, lambda: b21.subs('bad arg'))
-    raises(ValueError, lambda: b21.subs(b1, b2, b3))
+    raises(TypeError, lambda: b21.subs(b1, b2, b3))
     # dict(b1=foo) creates a string 'b1' but leaves foo unchanged; subs
     # will convert the first to a symbol but will raise an error if foo
     # cannot be sympified; sympification is strict if foo is not string
-    raises(ValueError, lambda: b21.subs(b1='bad arg'))
+    raises(TypeError, lambda: b21.subs(b1='bad arg'))
 
     assert Symbol("text").subs({"text": b1}) == b1
     assert Symbol("s").subs({"s": 1}) == 1
@@ -175,29 +185,6 @@ def test_xreplace():
         assert f.xreplace({f: b1}, hack2=True) == b1
 
 
-def test_preorder_traversal():
-    expr = Basic(b21, b3)
-    assert list(
-        preorder_traversal(expr)) == [expr, b21, b2, b1, b1, b3, b2, b1]
-    assert list(preorder_traversal(('abc', ('d', 'ef')))) == [
-        ('abc', ('d', 'ef')), 'abc', ('d', 'ef'), 'd', 'ef']
-
-    result = []
-    pt = preorder_traversal(expr)
-    for i in pt:
-        result.append(i)
-        if i == b2:
-            pt.skip()
-    assert result == [expr, b21, b2, b1, b3, b2]
-
-    w, x, y, z = symbols('w:z')
-    expr = z + w*(x + y)
-    assert list(preorder_traversal([expr], keys=default_sort_key)) == \
-        [[w*(x + y) + z], w*(x + y) + z, z, w*(x + y), w, x + y, x, y]
-    assert list(preorder_traversal((x + y)*z, keys=True)) == \
-        [z*(x + y), z, x + y, x, y]
-
-
 def test_sorted_args():
     x = symbols('x')
     assert b21._sorted_args == b21.args
@@ -237,10 +224,6 @@ def test_rewrite():
     assert f1.rewrite() == f1
 
 def test_literal_evalf_is_number_is_zero_is_comparable():
-    from sympy.integrals.integrals import Integral
-    from sympy.core.symbol import symbols
-    from sympy.core.function import Function
-    from sympy.functions.elementary.trigonometric import cos, sin
     x = symbols('x')
     f = Function('f')
 
@@ -278,7 +261,7 @@ def test_atomic():
     assert _atomic(g(x + h(x))) == {g(x + h(x))}
     assert _atomic(g(x + h(x)), recursive=True) == {h(x), x, g(x + h(x))}
     assert _atomic(1) == set()
-    assert _atomic(Basic(1,2)) == {Basic(1, 2)}
+    assert _atomic(Basic(S(1), S(2))) == set()
 
 
 def test_as_dummy():
@@ -310,7 +293,7 @@ def test_canonical_variables():
 
 
 def test_replace_exceptions():
-    from sympy import Wild
+    from sympy.core.symbol import Wild
     x, y = symbols('x y')
     e = (x**2 + x*y)
     raises(TypeError, lambda: e.replace(sin, 2))
@@ -319,3 +302,42 @@ def test_replace_exceptions():
     raises(TypeError, lambda: e.replace(b*c, c.is_real))
     raises(TypeError, lambda: e.replace(b.is_real, 1))
     raises(TypeError, lambda: e.replace(lambda d: d.is_Number, 1))
+
+
+def test_ManagedProperties():
+    # ManagedProperties is now deprecated. Here we do our best to check that if
+    # someone is using it then it does work in the way that it previously did
+    # but gives a deprecation warning.
+    from sympy.core.assumptions import ManagedProperties
+
+    myclasses = []
+
+    class MyMeta(ManagedProperties):
+        def __init__(cls, *args, **kwargs):
+            myclasses.append('executed')
+            super().__init__(*args, **kwargs)
+
+    code = """
+class MySubclass(Basic, metaclass=MyMeta):
+    pass
+"""
+    with warns_deprecated_sympy():
+        exec(code)
+
+    assert myclasses == ['executed']
+
+
+def test_generic():
+    # https://github.com/sympy/sympy/issues/25399
+    class A(Symbol, Generic[T]):
+        pass
+
+    class B(A[T]):
+        pass
+
+
+def test_rewrite_abs():
+    # https://github.com/sympy/sympy/issues/27323
+    x = Symbol('x')
+    assert sign(x).rewrite(abs) == sign(x).rewrite(Abs)
+    assert sign(x).rewrite(abs) == Piecewise((0, Eq(x, 0)), (x / Abs(x), True))

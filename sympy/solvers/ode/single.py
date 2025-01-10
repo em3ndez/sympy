@@ -2,17 +2,16 @@
 # This is the module for ODE solver classes for single ODEs.
 #
 
-import typing
-if typing.TYPE_CHECKING:
-    from typing import ClassVar
-from typing import Dict, Type, Iterator, List, Optional
+from __future__ import annotations
+from typing import ClassVar, Iterator
 
 from .riccati import match_riccati, solve_riccati
 from sympy.core import Add, S, Pow, Rational
+from sympy.core.cache import cached_property
 from sympy.core.exprtools import factor_terms
 from sympy.core.expr import Expr
 from sympy.core.function import AppliedUndef, Derivative, diff, Function, expand, Subs, _mexpand
-from sympy.core.numbers import Float, zoo
+from sympy.core.numbers import zoo
 from sympy.core.relational import Equality, Eq
 from sympy.core.symbol import Symbol, Dummy, Wild
 from sympy.core.mul import Mul
@@ -20,7 +19,7 @@ from sympy.functions import exp, tan, log, sqrt, besselj, bessely, cbrt, airyai,
 from sympy.integrals import Integral
 from sympy.polys import Poly
 from sympy.polys.polytools import cancel, factor, degree
-from sympy.simplify import collect, simplify, separatevars, logcombine, posify
+from sympy.simplify import collect, simplify, separatevars, logcombine, posify # type: ignore
 from sympy.simplify.radsimp import fraction
 from sympy.utilities import numbered_symbols
 from sympy.solvers.solvers import solve
@@ -38,18 +37,6 @@ from .lie_group import _ode_lie_group
 class ODEMatchError(NotImplementedError):
     """Raised if a SingleODESolver is asked to solve an ODE it does not match"""
     pass
-
-
-def cached_property(func):
-    '''Decorator to cache property method'''
-    attrname = '_' + func.__name__
-    def propfunc(self):
-        val = getattr(self, attrname, None)
-        if val is None:
-            val = func(self)
-            setattr(self, attrname, val)
-        return val
-    return property(propfunc)
 
 
 class SingleODEProblem:
@@ -123,7 +110,7 @@ class SingleODEProblem:
                 if r and r[c1]:
                     den = self.func**r[c1]
                     reduced_eq = Add(*[arg/den for arg in self.eq.args])
-        if not reduced_eq:
+        if reduced_eq is None:
             reduced_eq = expand(self.eq)
         return reduced_eq
 
@@ -140,7 +127,7 @@ class SingleODEProblem:
             process_eq = self.eq
         return process_eq
 
-    def get_numbered_constants(self, num=1, start=1, prefix='C') -> List[Symbol]:
+    def get_numbered_constants(self, num=1, start=1, prefix='C') -> list[Symbol]:
         """
         Returns a list of constants that do not occur
         in eq already.
@@ -261,21 +248,21 @@ class SingleODESolver:
 
     # Subclasses should store the hint name (the argument to dsolve) in this
     # attribute
-    hint = None  # type: ClassVar[str]
+    hint: ClassVar[str]
 
     # Subclasses should define this to indicate if they support an _Integral
     # hint.
-    has_integral = None  # type: ClassVar[bool]
+    has_integral: ClassVar[bool]
 
     # The ODE to be solved
     ode_problem = None  # type: SingleODEProblem
 
     # Cache whether or not the equation has matched the method
-    _matched = None  # type: Optional[bool]
+    _matched: bool | None = None
 
     # Subclasses should store in this attribute the list of order(s) of ODE
     # that subclass can solve or leave it to None if not specific to any order
-    order = None  # type: Optional[list]
+    order: list | None = None
 
     def __init__(self, ode_problem):
         self.ode_problem = ode_problem
@@ -289,9 +276,9 @@ class SingleODESolver:
             self._matched = self._matches()
         return self._matched
 
-    def get_general_solution(self, *, simplify: bool = True) -> List[Equality]:
+    def get_general_solution(self, *, simplify: bool = True) -> list[Equality]:
         if not self.matches():
-            msg = "%s solver can not solve:\n%s"
+            msg = "%s solver cannot solve:\n%s"
             raise ODEMatchError(msg % (self.hint, self.ode_problem.eq))
         return self._get_general_solution(simplify_flag=simplify)
 
@@ -299,7 +286,7 @@ class SingleODESolver:
         msg = "Subclasses of SingleODESolver should implement matches."
         raise NotImplementedError(msg)
 
-    def _get_general_solution(self, *, simplify_flag: bool = True) -> List[Equality]:
+    def _get_general_solution(self, *, simplify_flag: bool = True) -> list[Equality]:
         msg = "Subclasses of SingleODESolver should implement get_general_solution."
         raise NotImplementedError(msg)
 
@@ -433,7 +420,7 @@ class NthAlgebraic(SingleODESolver):
     # be stored in cached results we need to ensure that we always get the
     # same class back for each particular integration variable so we store these
     # classes in a global dict:
-    _diffx_stored = {}  # type: Dict[Symbol, Type[Function]]
+    _diffx_stored: dict[Symbol, type[Function]] = {}
 
     @staticmethod
     def _get_diffx(var):
@@ -626,7 +613,7 @@ class FirstLinear(SinglePatternODESolver):
     References
     ==========
 
-    - https://en.wikipedia.org/wiki/Linear_differential_equation#First_order_equation
+    - https://en.wikipedia.org/wiki/Linear_differential_equation#First-order_equation_with_variable_coefficients
     - M. Tenenbaum & H. Pollard, "Ordinary Differential Equations",
       Dover 1963, pp. 92
 
@@ -677,8 +664,7 @@ class AlmostLinear(SinglePatternODESolver):
     Examples
     ========
 
-    >>> from sympy import Function, pprint, sin, cos
-    >>> from sympy.solvers.ode import dsolve
+    >>> from sympy import dsolve, Function, pprint, sin, cos
     >>> from sympy.abc import x
     >>> f = Function('f')
     >>> d = f(x).diff(x)
@@ -764,19 +750,19 @@ class Bernoulli(SinglePatternODESolver):
         P(x)*f(x) + --(f(x)) = Q(x)*f (x)
                     dx
         >>> pprint(dsolve(genform, f(x), hint='Bernoulli_Integral'), num_columns=110)
-                                                                                                              -1
-                                                                                                             -----
-                                                                                                             n - 1
-               //         /                                /                           \                    \
-               ||        |                                |                            |                    |
-               ||        |                 /              |                 /          |            /       |
-               ||        |                |               |                |           |           |        |
-               ||        |       (1 - n)* | P(x) dx       |       (1 - n)* | P(x) dx   |  (n - 1)* | P(x) dx|
-               ||        |                |               |                |           |           |        |
-               ||        |               /                |               /            |          /         |
-        f(x) = ||C1 - n* | Q(x)*e                   dx +  | Q(x)*e                   dx|*e                  |
-               ||        |                                |                            |                    |
-               \\       /                                /                             /                    /
+                                                                                                                -1
+                                                                                                               -----
+                                                                                                               n - 1
+               //         /                                 /                            \                    \
+               ||        |                                 |                             |                    |
+               ||        |                  /              |                  /          |            /       |
+               ||        |                 |               |                 |           |           |        |
+               ||        |       -(n - 1)* | P(x) dx       |       -(n - 1)* | P(x) dx   |  (n - 1)* | P(x) dx|
+               ||        |                 |               |                 |           |           |        |
+               ||        |                /                |                /            |          /         |
+        f(x) = ||C1 - n* | Q(x)*e                    dx +  | Q(x)*e                    dx|*e                  |
+               ||        |                                 |                             |                    |
+               \\       /                                 /                              /                    /
 
 
     Note that the equation is separable when `n = 1` (see the docstring of
@@ -875,13 +861,12 @@ class Factorable(SingleODESolver):
     has_integral = False
 
     def _matches(self):
-        eq = self.ode_problem.eq
+        eq_orig = self.ode_problem.eq
         f = self.ode_problem.func.func
         x = self.ode_problem.sym
-        order =self.ode_problem.order
         df = f(x).diff(x)
         self.eqs = []
-        eq = eq.collect(f(x), func = cancel)
+        eq = eq_orig.collect(f(x), func = cancel)
         eq = fraction(factor(eq))[0]
         factors = Mul.make_args(factor(eq))
         roots = [fac.as_base_exp() for fac in factors if len(fac.args)!=0]
@@ -894,13 +879,9 @@ class Factorable(SingleODESolver):
         roots = solve(eq, df)
         if len(roots)>0:
             self.eqs = [(df - root) for root in roots]
-            if len(self.eqs)==1:
-                if order>1:
-                    return False
-                if self.eqs[0].has(Float):
-                    return False
-                return fraction(factor(self.eqs[0]))[0]-eq!=0
-            return True
+            # Avoid infinite recursion
+            matches = self.eqs != [eq_orig]
+            return matches
         for i in factors:
             if i.has(f(x)):
                 self.eqs.append(i)
@@ -942,8 +923,7 @@ class RiccatiSpecial(SinglePatternODESolver):
     zero.
 
     >>> from sympy.abc import x, a, b, c, d
-    >>> from sympy.solvers.ode import dsolve, checkodesol
-    >>> from sympy import pprint, Function
+    >>> from sympy import dsolve, checkodesol, pprint, Function
     >>> f = Function('f')
     >>> y = f(x)
     >>> genform = a*y.diff(x) - (b*y**2 + c*y/x + d/x**2)
@@ -963,9 +943,9 @@ class RiccatiSpecial(SinglePatternODESolver):
     References
     ==========
 
-    - http://www.maplesoft.com/support/help/Maple/view.aspx?path=odeadvisor/Riccati
-    - http://eqworld.ipmnet.ru/en/solutions/ode/ode0106.pdf -
-      http://eqworld.ipmnet.ru/en/solutions/ode/ode0123.pdf
+    - https://www.maplesoft.com/support/help/Maple/view.aspx?path=odeadvisor/Riccati
+    - https://eqworld.ipmnet.ru/en/solutions/ode/ode0106.pdf -
+      https://eqworld.ipmnet.ru/en/solutions/ode/ode0123.pdf
     """
     hint = "Riccati_special_minus2"
     has_integral = False
@@ -1095,7 +1075,7 @@ class SecondNonlinearAutonomousConserved(SinglePatternODESolver):
     References
     ==========
 
-    - http://eqworld.ipmnet.ru/en/solutions/ode/ode0301.pdf
+    - https://eqworld.ipmnet.ru/en/solutions/ode/ode0301.pdf
     """
     hint = "2nd_nonlinear_autonomous_conserved"
     has_integral = True
@@ -1176,7 +1156,7 @@ class Liouville(SinglePatternODESolver):
 
     - Goldstein and Braun, "Advanced Methods for the Solution of Differential
       Equations", pp. 98
-    - http://www.maplesoft.com/support/help/Maple/view.aspx?path=odeadvisor/Liouville
+    - https://www.maplesoft.com/support/help/Maple/view.aspx?path=odeadvisor/Liouville
 
     # indirect doctest
 
@@ -1297,9 +1277,7 @@ class Separable(SinglePatternODESolver):
         # m1[coeff]*m1[x]*m1[y] + m2[coeff]*m2[x]*m2[y]*y'
         self.m1 = separatevars(d, dict=True, symbols=(x, self.y))
         self.m2 = separatevars(e, dict=True, symbols=(x, self.y))
-        if self.m1 and self.m2:
-            return True
-        return False
+        return bool(self.m1 and self.m2)
 
     def _get_match_object(self):
         fx = self.ode_problem.func
@@ -1357,8 +1335,7 @@ class SeparableReduced(Separable):
     Examples
     ========
 
-    >>> from sympy import Function, pprint
-    >>> from sympy.solvers.ode.ode import dsolve
+    >>> from sympy import dsolve, Function, pprint
     >>> from sympy.abc import x
     >>> f = Function('f')
     >>> d = f(x).diff(x)
@@ -1642,8 +1619,8 @@ class HomogeneousCoeffSubsIndepDivDep(SinglePatternODESolver):
     >>> pprint(dsolve(2*x*f(x) + (x**2 + f(x)**2)*f(x).diff(x), f(x),
     ... hint='1st_homogeneous_coeff_subs_indep_div_dep',
     ... simplify=False))
-                             /    2    \
-                             | 3*x     |
+                             /   2     \
+                             |3*x      |
                           log|----- + 1|
                              | 2       |
                              \f (x)    /
@@ -1699,7 +1676,7 @@ class HomogeneousCoeffSubsIndepDivDep(SinglePatternODESolver):
     def _get_general_solution(self, *, simplify_flag: bool = True):
         d, e, fx, x, u, u1, y, xarg, yarg = self._get_match_object()
         (C1,) = self.ode_problem.get_numbered_constants(num=1)
-        int = Integral(simplify((-d/(e + u1*d)).subs({x: u1, y: 1})), (u1, None, x/fx))
+        int = Integral(simplify((-d/(e + u1*d)).subs({x: u1, y: 1})), (u1, None, x/fx)) # type: ignore
         sol = logcombine(Eq(log(fx), int + log(C1)), force=True)
         gen_sol = sol.subs(fx, u).subs(((u, u - yarg), (x, x - xarg), (u, fx)))
         return [gen_sol]
@@ -1728,8 +1705,8 @@ class HomogeneousCoeffBest(HomogeneousCoeffSubsIndepDivDep, HomogeneousCoeffSubs
     >>> f = Function('f')
     >>> pprint(dsolve(2*x*f(x) + (x**2 + f(x)**2)*f(x).diff(x), f(x),
     ... hint='1st_homogeneous_coeff_best', simplify=False))
-                             /    2    \
-                             | 3*x     |
+                             /   2     \
+                             |3*x      |
                           log|----- + 1|
                              | 2       |
                              \f (x)    /
@@ -1751,9 +1728,8 @@ class HomogeneousCoeffBest(HomogeneousCoeffSubsIndepDivDep, HomogeneousCoeffSubs
     order = [1]
 
     def _verify(self, fx):
-        if HomogeneousCoeffSubsIndepDivDep._verify(self, fx) and HomogeneousCoeffSubsDepDivIndep._verify(self, fx):
-            return True
-        return False
+        return HomogeneousCoeffSubsIndepDivDep._verify(self, fx) and \
+               HomogeneousCoeffSubsDepDivIndep._verify(self, fx)
 
     def _get_general_solution(self, *, simplify_flag: bool = True):
         # There are two substitutions that solve the equation, u1=y/x and u2=x/y
@@ -1765,7 +1741,8 @@ class HomogeneousCoeffBest(HomogeneousCoeffSubsIndepDivDep, HomogeneousCoeffSubs
         if simplify_flag:
             sol1 = odesimp(self.ode_problem.eq, *sol1, fx, "1st_homogeneous_coeff_subs_indep_div_dep")
             sol2 = odesimp(self.ode_problem.eq, *sol2, fx, "1st_homogeneous_coeff_subs_dep_div_indep")
-        return min([sol1, sol2], key=lambda x: ode_sol_simplicity(x, fx, trysolving=not simplify))
+        # XXX: not simplify should be not simplify_flag. mypy correctly complains
+        return min([sol1, sol2], key=lambda x: ode_sol_simplicity(x, fx, trysolving=not simplify)) # type: ignore
 
 
 class LinearCoefficients(HomogeneousCoeffBest):
@@ -1799,8 +1776,7 @@ class LinearCoefficients(HomogeneousCoeffBest):
     Examples
     ========
 
-    >>> from sympy import Function, pprint
-    >>> from sympy.solvers.ode.ode import dsolve
+    >>> from sympy import dsolve, Function, pprint
     >>> from sympy.abc import x
     >>> f = Function('f')
     >>> df = f(x).diff(x)
@@ -1880,10 +1856,9 @@ class LinearCoefficients(HomogeneousCoeffBest):
         Examples
         ========
 
-        >>> from sympy import Function
+        >>> from sympy import Function, sin
         >>> from sympy.abc import x
         >>> from sympy.solvers.ode.single import LinearCoefficients
-        >>> from sympy.functions.elementary.trigonometric import sin
         >>> f = Function('f')
         >>> eq = (-25*f(x) - 8*x + 62)/(4*f(x) + 11*x - 11)
         >>> obj = LinearCoefficients(eq)
@@ -2206,8 +2181,8 @@ class NthLinearConstantCoeffHomogeneous(SingleODESolver):
         roots, collectterms = _get_const_characteristic_eq_sols(self.r, fx, order)
         # A generator of constants
         constants = self.ode_problem.get_numbered_constants(num=len(roots))
-        gsol = Add(*[i*j for (i, j) in zip(constants, roots)])
-        gsol = Eq(fx, gsol)
+        gsol_rhs = Add(*[i*j for (i, j) in zip(constants, roots)])
+        gsol = Eq(fx, gsol_rhs)
         if simplify_flag:
             gsol = _get_simplified_sol([gsol], fx, collectterms)
 
@@ -2247,7 +2222,7 @@ class NthLinearConstantCoeffVariationOfParameters(SingleODESolver):
     ``nth_linear_constant_coeff_variation_of_parameters_Integral`` hint and
     simplifying the integrals manually.  Also, prefer using
     ``nth_linear_constant_coeff_undetermined_coefficients`` when it
-    applies, because it doesn't use integration, making it faster and more
+    applies, because it does not use integration, making it faster and more
     reliable.
 
     Warning, using simplify=False with
@@ -2276,7 +2251,7 @@ class NthLinearConstantCoeffVariationOfParameters(SingleODESolver):
     ==========
 
     - https://en.wikipedia.org/wiki/Variation_of_parameters
-    - http://planetmath.org/VariationOfParameters
+    - https://planetmath.org/VariationOfParameters
     - M. Tenenbaum & H. Pollard, "Ordinary Differential Equations",
       Dover 1963, pp. 233
 
@@ -2308,8 +2283,8 @@ class NthLinearConstantCoeffVariationOfParameters(SingleODESolver):
         roots, collectterms = _get_const_characteristic_eq_sols(self.r, f(x), order)
         # A generator of constants
         constants = self.ode_problem.get_numbered_constants(num=len(roots))
-        homogen_sol = Add(*[i*j for (i, j) in zip(constants, roots)])
-        homogen_sol = Eq(f(x), homogen_sol)
+        homogen_sol_rhs = Add(*[i*j for (i, j) in zip(constants, roots)])
+        homogen_sol = Eq(f(x), homogen_sol_rhs)
         homogen_sol = _solve_variation_of_parameters(eq, f(x), roots, homogen_sol, order, self.r, simplify_flag)
         if simplify_flag:
             homogen_sol = _get_simplified_sol([homogen_sol], f(x), collectterms)
@@ -2400,8 +2375,8 @@ class NthLinearConstantCoeffUndeterminedCoefficients(SingleODESolver):
         roots, collectterms = _get_const_characteristic_eq_sols(self.r, f(x), order)
         # A generator of constants
         constants = self.ode_problem.get_numbered_constants(num=len(roots))
-        homogen_sol = Add(*[i*j for (i, j) in zip(constants, roots)])
-        homogen_sol = Eq(f(x), homogen_sol)
+        homogen_sol_rhs = Add(*[i*j for (i, j) in zip(constants, roots)])
+        homogen_sol = Eq(f(x), homogen_sol_rhs)
         self.r.update({'list': roots, 'sol': homogen_sol, 'simpliy_flag': simplify_flag})
         gsol = _solve_undetermined_coefficients(eq, f(x), order, self.r, self.trialset)
         if simplify_flag:
@@ -2492,8 +2467,8 @@ class NthLinearEulerEqHomogeneous(SingleODESolver):
             coeff = match[order]
             factor = x**order / coeff
             self.r = {i: factor*match[i] for i in match}
-        if self.r and not any(not _test_term(self.r[i], f(x), i) for i in
-                self.r if i >= 0):
+        if self.r and all(_test_term(self.r[i], f(x), i) for i in
+                          self.r if i >= 0):
             if not self.r[-1]:
                 does_match = True
         return does_match
@@ -2535,7 +2510,7 @@ class NthLinearEulerEqNonhomogeneousVariationOfParameters(SingleODESolver):
     ``nth_linear_constant_coeff_variation_of_parameters_Integral`` hint and
     simplifying the integrals manually.  Also, prefer using
     ``nth_linear_constant_coeff_undetermined_coefficients`` when it
-    applies, because it doesn't use integration, making it faster and more
+    applies, because it does not use integration, making it faster and more
     reliable.
 
     Warning, using simplify=False with
@@ -2575,8 +2550,8 @@ class NthLinearEulerEqNonhomogeneousVariationOfParameters(SingleODESolver):
             coeff = match[order]
             factor = x**order / coeff
             self.r = {i: factor*match[i] for i in match}
-        if self.r and not any(not _test_term(self.r[i], f(x), i) for i in
-                self.r if i >= 0):
+        if self.r and all(_test_term(self.r[i], f(x), i) for i in
+                          self.r if i >= 0):
             if self.r[-1]:
                 does_match = True
 
@@ -2656,8 +2631,8 @@ class NthLinearEulerEqNonhomogeneousUndeterminedCoefficients(SingleODESolver):
             coeff = match[order]
             factor = x**order / coeff
             self.r = {i: factor*match[i] for i in match}
-        if self.r and not any(not _test_term(self.r[i], f(x), i) for i in
-                self.r if i >= 0):
+        if self.r and all(_test_term(self.r[i], f(x), i) for i in
+                          self.r if i >= 0):
             if self.r[-1]:
                 e, re = posify(self.r[-1].subs(x, exp(x)))
                 undetcoeff = _undetermined_coefficients_match(e.subs(re), x)
@@ -2683,8 +2658,8 @@ class NthLinearEulerEqNonhomogeneousUndeterminedCoefficients(SingleODESolver):
 
         self.const_undet_instance = NthLinearConstantCoeffUndeterminedCoefficients(SingleODEProblem(eq, f(x), x))
         sol = self.const_undet_instance.get_general_solution(simplify = simplify_flag)[0]
-        sol = sol.subs(x, log(x))
-        sol = sol.subs(f(log(x)), f(x)).expand()
+        sol = sol.subs(x, log(x)) # type: ignore
+        sol = sol.subs(f(log(x)), f(x)).expand() # type: ignore
 
         return [sol]
 
@@ -2707,8 +2682,7 @@ class SecondLinearBessel(SingleODESolver):
     >>> from sympy.abc import x
     >>> from sympy import Symbol
     >>> v = Symbol('v', positive=True)
-    >>> from sympy.solvers.ode import dsolve
-    >>> from sympy import Function
+    >>> from sympy import dsolve, Function
     >>> f = Function('f')
     >>> y = f(x)
     >>> genform = x**2*y.diff(x, 2) + x*y.diff(x) + (x**2 - v**2)*y
@@ -2718,7 +2692,7 @@ class SecondLinearBessel(SingleODESolver):
     References
     ==========
 
-    https://www.math24.net/bessel-differential-equation/
+    https://math24.net/bessel-differential-equation.html
 
     """
     hint = "2nd_linear_bessel"
@@ -2743,7 +2717,7 @@ class SecondLinearBessel(SingleODESolver):
         r = collect(eq,
             [f.diff(x, 2), df, f]).match(deq)
         if order == 2 and r:
-            if not all([r[key].is_polynomial() for key in r]):
+            if not all(r[key].is_polynomial() for key in r):
                 n, d = eq.as_numer_denom()
                 eq = expand(n)
                 r = collect(eq,
@@ -2777,7 +2751,7 @@ class SecondLinearBessel(SingleODESolver):
             # c3 maybe of very complex form so I am simply checking (a - b) form
             # if yes later I will match with the standerd form of bessel in a and b
             # a, b are wild variable defined above.
-            _coeff2 = r[c3].match(a - b)
+            _coeff2 = expand(r[c3]).match(a - b)
             if _coeff2 is None:
                 return False
             # matching with standerd form for c3
@@ -2971,7 +2945,10 @@ class LieGroup(SingleODESolver):
 
 solver_map = {
     'factorable': Factorable,
-    'nth_algebraic': NthAlgebraic,
+    'nth_linear_constant_coeff_homogeneous': NthLinearConstantCoeffHomogeneous,
+    'nth_linear_euler_eq_homogeneous': NthLinearEulerEqHomogeneous,
+    'nth_linear_constant_coeff_undetermined_coefficients': NthLinearConstantCoeffUndeterminedCoefficients,
+    'nth_linear_euler_eq_nonhomogeneous_undetermined_coefficients': NthLinearEulerEqNonhomogeneousUndeterminedCoefficients,
     'separable': Separable,
     '1st_exact': FirstExact,
     '1st_linear': FirstLinear,
@@ -2984,11 +2961,6 @@ solver_map = {
     'almost_linear': AlmostLinear,
     'linear_coefficients': LinearCoefficients,
     'separable_reduced': SeparableReduced,
-    'lie_group': LieGroup,
-    'nth_linear_constant_coeff_homogeneous': NthLinearConstantCoeffHomogeneous,
-    'nth_linear_euler_eq_homogeneous': NthLinearEulerEqHomogeneous,
-    'nth_linear_constant_coeff_undetermined_coefficients': NthLinearConstantCoeffUndeterminedCoefficients,
-    'nth_linear_euler_eq_nonhomogeneous_undetermined_coefficients': NthLinearEulerEqNonhomogeneousUndeterminedCoefficients,
     'nth_linear_constant_coeff_variation_of_parameters': NthLinearConstantCoeffVariationOfParameters,
     'nth_linear_euler_eq_nonhomogeneous_variation_of_parameters': NthLinearEulerEqNonhomogeneousVariationOfParameters,
     'Liouville': Liouville,
@@ -2997,6 +2969,8 @@ solver_map = {
     '2nd_hypergeometric': SecondHypergeometric,
     'nth_order_reducible': NthOrderReducible,
     '2nd_nonlinear_autonomous_conserved': SecondNonlinearAutonomousConserved,
+    'nth_algebraic': NthAlgebraic,
+    'lie_group': LieGroup,
     }
 
 # Avoid circular import:
