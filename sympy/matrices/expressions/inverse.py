@@ -1,7 +1,7 @@
 from sympy.core.sympify import _sympify
 from sympy.core import S, Basic
 
-from sympy.matrices.common import NonSquareMatrixError
+from sympy.matrices.exceptions import NonSquareMatrixError
 from sympy.matrices.expressions.matpow import MatPow
 
 
@@ -36,9 +36,10 @@ class Inverse(MatPow):
         # exp is there to make it consistent with
         # inverse.func(*inverse.args) == inverse
         mat = _sympify(mat)
+        exp = _sympify(exp)
         if not mat.is_Matrix:
             raise TypeError("mat should be a matrix")
-        if not mat.is_square:
+        if mat.is_square is False:
             raise NonSquareMatrixError("Inverse of non-square matrix %s" % mat)
         return Basic.__new__(cls, mat, exp)
 
@@ -52,6 +53,15 @@ class Inverse(MatPow):
 
     def _eval_inverse(self):
         return self.arg
+
+    def _eval_transpose(self):
+        return Inverse(self.arg.transpose())
+
+    def _eval_adjoint(self):
+        return Inverse(self.arg.adjoint())
+
+    def _eval_conjugate(self):
+        return Inverse(self.arg.conjugate())
 
     def _eval_determinant(self):
         from sympy.matrices.expressions.determinant import det

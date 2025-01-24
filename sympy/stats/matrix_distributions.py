@@ -1,4 +1,10 @@
-from sympy import S, Basic, exp, multigamma, pi, prod
+from math import prod
+
+from sympy.core.basic import Basic
+from sympy.core.numbers import pi
+from sympy.core.singleton import S
+from sympy.functions.elementary.exponential import exp
+from sympy.functions.special.gamma_functions import multigamma
 from sympy.core.sympify import sympify, _sympify
 from sympy.matrices import (ImmutableMatrix, Inverse, Trace, Determinant,
                             MatrixSymbol, MatrixBase, Transpose, MatrixSet,
@@ -134,23 +140,26 @@ class SampleMatrixNumpy:
 
 
 class SampleMatrixPymc:
-    """Returns the sample from pymc3 of the given distribution"""
+    """Returns the sample from pymc of the given distribution"""
 
     def __new__(cls, dist, size, seed=None):
-        return cls._sample_pymc3(dist, size, seed)
+        return cls._sample_pymc(dist, size, seed)
 
     @classmethod
-    def _sample_pymc3(cls, dist, size, seed):
-        """Sample from PyMC3."""
+    def _sample_pymc(cls, dist, size, seed):
+        """Sample from PyMC."""
 
-        import pymc3
-        pymc3_rv_map = {
-            'MatrixNormalDistribution': lambda dist: pymc3.MatrixNormal('X',
+        try:
+            import pymc
+        except ImportError:
+            import pymc3 as pymc
+        pymc_rv_map = {
+            'MatrixNormalDistribution': lambda dist: pymc.MatrixNormal('X',
                 mu=matrix2numpy(dist.location_matrix, float),
                 rowcov=matrix2numpy(dist.scale_matrix_1, float),
                 colcov=matrix2numpy(dist.scale_matrix_2, float),
                 shape=dist.location_matrix.shape),
-            'WishartDistribution': lambda dist: pymc3.WishartBartlett('X',
+            'WishartDistribution': lambda dist: pymc.WishartBartlett('X',
                 nu=int(dist.n), S=matrix2numpy(dist.scale_matrix, float))
         }
 
@@ -159,20 +168,21 @@ class SampleMatrixPymc:
             'MatrixNormalDistribution' : lambda dist: dist.location_matrix.shape
         }
 
-        dist_list = pymc3_rv_map.keys()
+        dist_list = pymc_rv_map.keys()
 
         if dist.__class__.__name__ not in dist_list:
             return None
         import logging
-        logging.getLogger("pymc3").setLevel(logging.ERROR)
-        with pymc3.Model():
-            pymc3_rv_map[dist.__class__.__name__](dist)
-            samps = pymc3.sample(draws=prod(size), chains=1, progressbar=False, random_seed=seed, return_inferencedata=False, compute_convergence_checks=False)['X']
+        logging.getLogger("pymc").setLevel(logging.ERROR)
+        with pymc.Model():
+            pymc_rv_map[dist.__class__.__name__](dist)
+            samps = pymc.sample(draws=prod(size), chains=1, progressbar=False, random_seed=seed, return_inferencedata=False, compute_convergence_checks=False)['X']
         return samps.reshape(size + sample_shape[dist.__class__.__name__](dist))
 
 _get_sample_class_matrixrv = {
     'scipy': SampleMatrixScipy,
     'pymc3': SampleMatrixPymc,
+    'pymc': SampleMatrixPymc,
     'numpy': SampleMatrixNumpy
 }
 
@@ -185,7 +195,8 @@ class MatrixDistribution(Distribution, NamedArgsMixin):
     Abstract class for Matrix Distribution.
     """
     def __new__(cls, *args):
-        args = list(map(sympify, args))
+        args = [ImmutableMatrix(arg) if isinstance(arg, list)
+                else _sympify(arg) for arg in args]
         return Basic.__new__(cls, *args)
 
     @staticmethod
@@ -204,7 +215,7 @@ class MatrixDistribution(Distribution, NamedArgsMixin):
         Returns dictionary mapping RandomSymbol to realization value.
         """
 
-        libraries = ['scipy', 'numpy', 'pymc3']
+        libraries = ['scipy', 'numpy', 'pymc3', 'pymc']
         if library not in libraries:
             raise NotImplementedError("Sampling from %s is not supported yet."
                                         % str(library))
@@ -233,7 +244,7 @@ class MatrixGammaDistribution(MatrixDistribution):
 
     @staticmethod
     def check(alpha, beta, scale_matrix):
-        if not isinstance(scale_matrix , MatrixSymbol):
+        if not isinstance(scale_matrix, MatrixSymbol):
             _value_check(scale_matrix.is_positive_definite, "The shape "
                 "matrix must be positive definite.")
         _value_check(scale_matrix.is_square, "Should "
@@ -251,7 +262,7 @@ class MatrixGammaDistribution(MatrixDistribution):
         return self.scale_matrix.shape
 
     def pdf(self, x):
-        alpha , beta , scale_matrix = self.alpha, self.beta, self.scale_matrix
+        alpha, beta, scale_matrix = self.alpha, self.beta, self.scale_matrix
         p = scale_matrix.shape[0]
         if isinstance(x, list):
             x = ImmutableMatrix(x)
@@ -320,7 +331,7 @@ class WishartDistribution(MatrixDistribution):
 
     @staticmethod
     def check(n, scale_matrix):
-        if not isinstance(scale_matrix , MatrixSymbol):
+        if not isinstance(scale_matrix, MatrixSymbol):
             _value_check(scale_matrix.is_positive_definite, "The shape "
                 "matrix must be positive definite.")
         _value_check(scale_matrix.is_square, "Should "
@@ -403,10 +414,10 @@ class MatrixNormalDistribution(MatrixDistribution):
 
     @staticmethod
     def check(location_matrix, scale_matrix_1, scale_matrix_2):
-        if not isinstance(scale_matrix_1 , MatrixSymbol):
+        if not isinstance(scale_matrix_1, MatrixSymbol):
             _value_check(scale_matrix_1.is_positive_definite, "The shape "
                 "matrix must be positive definite.")
-        if not isinstance(scale_matrix_2 , MatrixSymbol):
+        if not isinstance(scale_matrix_2, MatrixSymbol):
             _value_check(scale_matrix_2.is_positive_definite, "The shape "
                 "matrix must be positive definite.")
         _value_check(scale_matrix_1.is_square, "Scale matrix 1 should be "
@@ -430,7 +441,7 @@ class MatrixNormalDistribution(MatrixDistribution):
         return self.location_matrix.shape
 
     def pdf(self, x):
-        M , U , V = self.location_matrix, self.scale_matrix_1, self.scale_matrix_2
+        M, U, V = self.location_matrix, self.scale_matrix_1, self.scale_matrix_2
         n, p = M.shape
         if isinstance(x, list):
             x = ImmutableMatrix(x)
@@ -439,7 +450,7 @@ class MatrixNormalDistribution(MatrixDistribution):
                     "or MatrixSymbol" % str(x))
         term1 = Inverse(V)*Transpose(x - M)*Inverse(U)*(x - M)
         num = exp(-Trace(term1)/S(2))
-        den = (2*pi)**(S(n*p)/2) * Determinant(U)**S(p)/2 * Determinant(V)**S(n)/2
+        den = (2*pi)**(S(n*p)/2) * Determinant(U)**(S(p)/2) * Determinant(V)**(S(n)/2)
         return num/den
 
 def MatrixNormal(symbol, location_matrix, scale_matrix_1, scale_matrix_2):
@@ -471,11 +482,11 @@ def MatrixNormal(symbol, location_matrix, scale_matrix_1, scale_matrix_2):
     >>> M = MatrixNormal('M', [[1, 2]], [1], [[1, 0], [0, 1]])
     >>> X = MatrixSymbol('X', 1, 2)
     >>> density(M)(X).doit()
-    2*exp(-Trace((Matrix([
+    exp(-Trace((Matrix([
     [-1],
-    [-2]]) + X.T)*(Matrix([[-1, -2]]) + X))/2)/pi
+    [-2]]) + X.T)*(Matrix([[-1, -2]]) + X))/2)/(2*pi)
     >>> density(M)([[3, 4]]).doit()
-    2*exp(-4)/pi
+    exp(-4)/(2*pi)
 
     References
     ==========
@@ -529,7 +540,7 @@ class MatrixStudentTDistribution(MatrixDistribution):
         return self.location_matrix.shape
 
     def pdf(self, x):
-        from sympy import eye
+        from sympy.matrices.dense import eye
         if isinstance(x, list):
             x = ImmutableMatrix(x)
         if not isinstance(x, (MatrixBase, MatrixSymbol)):

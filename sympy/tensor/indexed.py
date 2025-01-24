@@ -1,4 +1,4 @@
-r"""Module that defines indexed objects
+r"""Module that defines indexed objects.
 
 The classes ``IndexedBase``, ``Indexed``, and ``Idx`` represent a
 matrix element ``M[i, j]`` as in the following diagram::
@@ -105,15 +105,16 @@ See the appropriate docstrings for a detailed explanation of the output.
 #      - Idx with step determined by function call
 from collections.abc import Iterable
 
-from sympy import Number
+from sympy.core.numbers import Number
 from sympy.core.assumptions import StdFactKB
 from sympy.core import Expr, Tuple, sympify, S
 from sympy.core.symbol import _filter_assumptions, Symbol
-from sympy.core.compatibility import (is_sequence, NotIterable)
 from sympy.core.logic import fuzzy_bool, fuzzy_not
 from sympy.core.sympify import _sympify
 from sympy.functions.special.tensor_functions import KroneckerDelta
 from sympy.multipledispatch import dispatch
+from sympy.utilities.iterables import is_sequence, NotIterable
+from sympy.utilities.misc import filldedent
 
 
 class IndexException(Exception):
@@ -138,15 +139,13 @@ class Indexed(Expr):
     True
 
     """
-    is_commutative = True
     is_Indexed = True
     is_symbol = True
     is_Atom = True
 
     def __new__(cls, base, *args, **kw_args):
-        from sympy.utilities.misc import filldedent
         from sympy.tensor.array.ndim_array import NDimArray
-        from sympy.matrices.matrices import MatrixBase
+        from sympy.matrices.matrixbase import MatrixBase
 
         if not args:
             raise IndexException("Indexed needs at least one index.")
@@ -159,18 +158,18 @@ class Indexed(Expr):
                 items (i.e. an object with a `__getitem__` method).
                 """))
         args = list(map(sympify, args))
-        if isinstance(base, (NDimArray, Iterable, Tuple, MatrixBase)) and all([i.is_number for i in args]):
+        if isinstance(base, (NDimArray, Iterable, Tuple, MatrixBase)) and all(i.is_number for i in args):
             if len(args) == 1:
                 return base[args[0]]
             else:
                 return base[args]
 
+        base = _sympify(base)
+
         obj = Expr.__new__(cls, base, *args, **kw_args)
 
-        try:
-            IndexedBase._set_assumptions(obj, base.assumptions0)
-        except AttributeError:
-            IndexedBase._set_assumptions(obj, {})
+        IndexedBase._set_assumptions(obj, base.assumptions0)
+
         return obj
 
     def _hashable_content(self):
@@ -283,7 +282,6 @@ class Indexed(Expr):
         >>> B[i, j].shape
         (m, m)
         """
-        from sympy.utilities.misc import filldedent
 
         if self.base.shape:
             return self.base.shape
@@ -324,12 +322,12 @@ class Indexed(Expr):
 
         """
         ranges = []
+        sentinel = object()
         for i in self.indices:
-            sentinel = object()
             upper = getattr(i, 'upper', sentinel)
             lower = getattr(i, 'lower', sentinel)
             if sentinel not in (upper, lower):
-                ranges.append(Tuple(lower, upper))
+                ranges.append((lower, upper))
             else:
                 ranges.append(None)
         return ranges
@@ -350,10 +348,14 @@ class Indexed(Expr):
 
     @property
     def expr_free_symbols(self):
-        from sympy.utilities.exceptions import SymPyDeprecationWarning
-        SymPyDeprecationWarning(feature="expr_free_symbols method",
-                                issue=21494,
-                                deprecated_since_version="1.9").warn()
+        from sympy.utilities.exceptions import sympy_deprecation_warning
+        sympy_deprecation_warning("""
+        The expr_free_symbols property is deprecated. Use free_symbols to get
+        the free symbols of an expression.
+        """,
+            deprecated_since_version="1.9",
+            active_deprecations_target="deprecated-expr-free-symbols")
+
         return {self}
 
 
@@ -423,7 +425,6 @@ class IndexedBase(Expr, NotIterable):
     >>> C_inherit == C_explicit
     True
     """
-    is_commutative = True
     is_symbol = True
     is_Atom = True
 
@@ -437,7 +438,8 @@ class IndexedBase(Expr, NotIterable):
         obj._assumptions._generator = tmp_asm_copy  # Issue #8873
 
     def __new__(cls, label, shape=None, *, offset=S.Zero, strides=None, **kw_args):
-        from sympy import MatrixBase, NDimArray
+        from sympy.matrices.matrixbase import MatrixBase
+        from sympy.tensor.array.ndim_array import NDimArray
 
         assumptions, kw_args = _filter_assumptions(kw_args)
         if isinstance(label, str):
@@ -640,7 +642,6 @@ class Idx(Expr):
     _diff_wrt = True
 
     def __new__(cls, label, range=None, **kw_args):
-        from sympy.utilities.misc import filldedent
 
         if isinstance(label, str):
             label = Symbol(label, integer=True)

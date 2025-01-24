@@ -1,6 +1,12 @@
-from sympy import S, Rational, gcd, sqrt, sign, symbols, Complement
+from sympy.core.numbers import Rational
+from sympy.core.singleton import S
+from sympy.core.symbol import symbols
+from sympy.functions.elementary.complexes import sign
+from sympy.functions.elementary.miscellaneous import sqrt
+from sympy.polys.polytools import gcd
+from sympy.sets.sets import Complement
 from sympy.core import Basic, Tuple, diff, expand, Eq, Integer
-from sympy.core.compatibility import ordered
+from sympy.core.sorting import ordered
 from sympy.core.symbol import _symbol
 from sympy.solvers import solveset, nonlinsolve, diophantine
 from sympy.polys import total_degree
@@ -36,7 +42,7 @@ class ImplicitRegion(Basic):
     >>> r.variables
     (x, y, z)
     >>> r.singular_points()
-    FiniteSet((0, 0, 0))
+    EmptySet
     >>> r.regular_point()
     (-10, -10, 200)
 
@@ -92,7 +98,7 @@ class ImplicitRegion(Basic):
         ==========
 
         - Erik Hillgarter, "Rational Points on Conics", Diploma Thesis, RISC-Linz,
-          J. Kepler Universitat Linz, 1996. Availaible:
+          J. Kepler Universitat Linz, 1996. Available:
           https://www3.risc.jku.at/publications/download/risc_1355/Rational%20Points%20on%20Conics.pdf
 
         """
@@ -219,14 +225,14 @@ class ImplicitRegion(Basic):
             flag = False
             for sol in solutions:
                 syms = Tuple(*sol).free_symbols
-                rep = {s: 3 for s in syms}
+                rep = dict.fromkeys(syms, 3)
                 sol_z = sol[2]
 
                 if sol_z == 0:
                     flag = True
                     continue
 
-                if not (isinstance(sol_z, Integer) or isinstance(sol_z, int)):
+                if not isinstance(sol_z, (int, Integer)):
                     syms_z = sol_z.free_symbols
 
                     if len(syms_z) == 1:
@@ -288,7 +294,7 @@ class ImplicitRegion(Basic):
         >>> from sympy.vector import ImplicitRegion
         >>> I = ImplicitRegion((x, y), (y-1)**2 -x**3 + 2*x**2 -x)
         >>> I.singular_points()
-        FiniteSet((1, 1))
+        {(1, 1)}
 
         """
         eq_list = [self.equation]
@@ -311,7 +317,7 @@ class ImplicitRegion(Basic):
         >>> from sympy.vector import ImplicitRegion
         >>> I = ImplicitRegion((x, y, z), x**2 + y**3 - z**4)
         >>> I.singular_points()
-        FiniteSet((0, 0, 0))
+        {(0, 0, 0)}
         >>> I.multiplicity((0, 0, 0))
         2
 
@@ -327,7 +333,7 @@ class ImplicitRegion(Basic):
 
         if len(modified_eq.args) != 0:
             terms = modified_eq.args
-            m = min([total_degree(term) for term in terms])
+            m = min(total_degree(term) for term in terms)
         else:
             terms = modified_eq
             m = total_degree(terms)
@@ -336,7 +342,7 @@ class ImplicitRegion(Basic):
 
     def rational_parametrization(self, parameters=('t', 's'), reg_point=None):
         """
-        Returns the rational parametrization of implict region.
+        Returns the rational parametrization of implicit region.
 
         Examples
         ========
@@ -412,10 +418,10 @@ class ImplicitRegion(Basic):
             singular_points = self.singular_points()
             for spoint in singular_points:
                 syms = Tuple(*spoint).free_symbols
-                rep = {s: 2 for s in syms}
+                rep = dict.fromkeys(syms, 2)
 
                 if len(syms) != 0:
-                   spoint = tuple(s.subs(rep) for s in spoint)
+                    spoint = tuple(s.subs(rep) for s in spoint)
 
                 if self.multiplicity(spoint) == degree - 1:
                     point = spoint
@@ -465,7 +471,7 @@ class ImplicitRegion(Basic):
         elif len(self.variables) == 3:
 
             parameter1, parameter2 = parameters
-            if parameter1 == 'r' or parameter2 == 'r':
+            if 'r' in parameters:
                 # To avoid name conflict between parameters
                 r = _symbol('r_', real=True)
             else:

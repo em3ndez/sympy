@@ -1,6 +1,6 @@
 import os
 import tempfile
-from sympy import Symbol, symbols
+from sympy.core.symbol import (Symbol, symbols)
 from sympy.codegen.ast import (
     Assignment, Print, Declaration, FunctionDefinition, Return, real,
     FunctionCall, Variable, Element, integer
@@ -13,7 +13,7 @@ from sympy.codegen.fnodes import (
 from sympy.codegen.futils import render_as_module
 from sympy.core.expr import unchanged
 from sympy.external import import_module
-from sympy.printing import fcode
+from sympy.printing.codeprinter import fcode
 from sympy.utilities._compilation import has_fortran, compile_run_strings, compile_link_import_strings
 from sympy.utilities._compilation.util import may_xfail
 from sympy.testing.pytest import skip, XFAIL
@@ -44,7 +44,7 @@ def test_size_assumed_shape():
             'program myprog\n'
             'use mod_rms, only: rms\n'
             'real*8, dimension(4), parameter :: x = [4, 2, 2, 2]\n'
-            'print *, dsqrt(7d0) - rms(x)\n'
+            'print "(f7.5)", dsqrt(7d0) - rms(x)\n'
             'end program\n'
         ))
     ], clean=True)

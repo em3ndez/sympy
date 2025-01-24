@@ -1,9 +1,18 @@
 """Dirac notation for states."""
 
-from sympy import (cacheit, conjugate, Expr, Function, integrate, oo, sqrt,
-                   Tuple)
+from sympy.core.cache import cacheit
+from sympy.core.containers import Tuple
+from sympy.core.expr import Expr
+from sympy.core.function import Function
+from sympy.core.numbers import oo, equal_valued
+from sympy.core.singleton import S
+from sympy.functions.elementary.complexes import conjugate
+from sympy.functions.elementary.miscellaneous import sqrt
+from sympy.integrals.integrals import integrate
 from sympy.printing.pretty.stringpict import stringPict
 from sympy.physics.quantum.qexpr import QExpr, dispatch_method
+from sympy.physics.quantum.kind import KetKind, BraKind
+
 
 __all__ = [
     'KetBase',
@@ -102,6 +111,9 @@ class StateBase(QExpr):
     def _represent_default_basis(self, **options):
         return self._represent(basis=self.operators)
 
+    def _apply_operator(self, op, **options):
+        return None
+
     #-------------------------------------------------------------------------
     # Dagger/dual
     #-------------------------------------------------------------------------
@@ -132,12 +144,12 @@ class StateBase(QExpr):
 
         # Setup for unicode vs ascii
         if use_unicode:
-            lbracket, rbracket = self.lbracket_ucode, self.rbracket_ucode
+            lbracket, rbracket = getattr(self, 'lbracket_ucode', ""), getattr(self, 'rbracket_ucode', "")
             slash, bslash, vert = '\N{BOX DRAWINGS LIGHT DIAGONAL UPPER RIGHT TO LOWER LEFT}', \
                                   '\N{BOX DRAWINGS LIGHT DIAGONAL UPPER LEFT TO LOWER RIGHT}', \
                                   '\N{BOX DRAWINGS LIGHT VERTICAL}'
         else:
-            lbracket, rbracket = self.lbracket, self.rbracket
+            lbracket, rbracket = getattr(self, 'lbracket', ""), getattr(self, 'rbracket', "")
             slash, bslash, vert = '/', '\\', '|'
 
         # If height is 1, just return brackets
@@ -153,7 +165,7 @@ class StateBase(QExpr):
                 bracket_args = [ ' ' * (height//2 - i - 1) +
                                  slash for i in range(height // 2)]
                 bracket_args.extend(
-                    [ ' ' * i + bslash for i in range(height // 2)])
+                    [' ' * i + bslash for i in range(height // 2)])
             # Create right bracket
             elif bracket in {_rbracket, _rbracket_ucode}:
                 bracket_args = [ ' ' * i + bslash for i in range(height // 2)]
@@ -161,7 +173,7 @@ class StateBase(QExpr):
                     height//2 - i - 1) + slash for i in range(height // 2)])
             # Create straight bracket
             elif bracket in {_straight_bracket, _straight_bracket_ucode}:
-                bracket_args = [vert for i in range(height)]
+                bracket_args = [vert] * height
             else:
                 raise ValueError(bracket)
             brackets.append(
@@ -170,7 +182,7 @@ class StateBase(QExpr):
 
     def _sympystr(self, printer, *args):
         contents = self._print_contents(printer, *args)
-        return '%s%s%s' % (self.lbracket, contents, self.rbracket)
+        return '%s%s%s' % (getattr(self, 'lbracket', ""), contents, getattr(self, 'rbracket', ""))
 
     def _pretty(self, printer, *args):
         from sympy.printing.pretty.stringpict import prettyForm
@@ -187,7 +199,7 @@ class StateBase(QExpr):
         contents = self._print_contents_latex(printer, *args)
         # The extra {} brackets are needed to get matplotlib's latex
         # rendered to render this properly.
-        return '{%s%s%s}' % (self.lbracket_latex, contents, self.rbracket_latex)
+        return '{%s%s%s}' % (getattr(self, 'lbracket_latex', ""), contents, getattr(self, 'rbracket_latex', ""))
 
 
 class KetBase(StateBase):
@@ -197,6 +209,8 @@ class KetBase(StateBase):
     an abstract base class and you should not instantiate it directly, instead
     use Ket.
     """
+
+    kind = KetKind
 
     lbracket = _straight_bracket
     rbracket = _rbracket
@@ -212,22 +226,6 @@ class KetBase(StateBase):
     @classmethod
     def dual_class(self):
         return BraBase
-
-    def __mul__(self, other):
-        """KetBase*other"""
-        from sympy.physics.quantum.operator import OuterProduct
-        if isinstance(other, BraBase):
-            return OuterProduct(self, other)
-        else:
-            return Expr.__mul__(self, other)
-
-    def __rmul__(self, other):
-        """other*KetBase"""
-        from sympy.physics.quantum.innerproduct import InnerProduct
-        if isinstance(other, BraBase):
-            return InnerProduct(other, self)
-        else:
-            return Expr.__rmul__(self, other)
 
     #-------------------------------------------------------------------------
     # _eval_* methods
@@ -247,26 +245,26 @@ class KetBase(StateBase):
         """
         return dispatch_method(self, '_eval_innerproduct', bra, **hints)
 
-    def _apply_operator(self, op, **options):
-        """Apply an Operator to this Ket.
+    def _apply_from_right_to(self, op, **options):
+        """Apply an Operator to this Ket as Operator*Ket
 
         This method will dispatch to methods having the format::
 
-            ``def _apply_operator_OperatorName(op, **options):``
+            ``def _apply_from_right_to_OperatorName(op, **options):``
 
         Subclasses should define these methods (one for each OperatorName) to
-        teach the Ket how operators act on it.
+        teach the Ket how to implement OperatorName*Ket
 
         Parameters
         ==========
 
         op : Operator
-            The Operator that is acting on the Ket.
+            The Operator that is acting on the Ket as op*Ket
         options : dict
             A dict of key/value pairs that control how the operator is applied
             to the Ket.
         """
-        return dispatch_method(self, '_apply_operator', op, **options)
+        return dispatch_method(self, '_apply_from_right_to', op, **options)
 
 
 class BraBase(StateBase):
@@ -276,6 +274,8 @@ class BraBase(StateBase):
     is an abstract base class and you should not instantiate it directly,
     instead use Bra.
     """
+
+    kind = BraKind
 
     lbracket = _lbracket
     rbracket = _straight_bracket
@@ -303,22 +303,6 @@ class BraBase(StateBase):
     @classmethod
     def dual_class(self):
         return KetBase
-
-    def __mul__(self, other):
-        """BraBase*other"""
-        from sympy.physics.quantum.innerproduct import InnerProduct
-        if isinstance(other, KetBase):
-            return InnerProduct(self, other)
-        else:
-            return Expr.__mul__(self, other)
-
-    def __rmul__(self, other):
-        """other*BraBase"""
-        from sympy.physics.quantum.operator import OuterProduct
-        if isinstance(other, KetBase):
-            return OuterProduct(other, self)
-        else:
-            return Expr.__rmul__(self, other)
 
     def _represent(self, **options):
         """A default represent that uses the Ket's version."""
@@ -616,7 +600,7 @@ class TimeDepBra(TimeDepState, BraBase):
         return TimeDepKet
 
 
-class OrthogonalState(State, StateBase):
+class OrthogonalState(State):
     """General abstract quantum state used as a base class for Ket and Bra."""
     pass
 
@@ -645,17 +629,19 @@ class OrthogonalKet(OrthogonalState, KetBase):
         if len(self.args) != len(bra.args):
             raise ValueError('Cannot multiply a ket that has a different number of labels.')
 
-        for i in range(len(self.args)):
-            diff = self.args[i] - bra.args[i]
+        for arg, bra_arg in zip(self.args, bra.args):
+            diff = arg - bra_arg
             diff = diff.expand()
 
-            if diff.is_zero is False:
-                return 0
+            is_zero = diff.is_zero
 
-            if diff.is_zero is None:
+            if is_zero is False:
+                return S.Zero # i.e. Integer(0)
+
+            if is_zero is None:
                 return None
 
-        return 1
+        return S.One # i.e. Integer(1)
 
 
 class OrthogonalBra(OrthogonalState, BraBase):
@@ -788,7 +774,7 @@ class Wavefunction(Function):
                 continue
 
             if (args[ct] < lower) == True or (args[ct] > upper) == True:
-                return 0
+                return S.Zero
 
             ct += 1
 
@@ -813,10 +799,6 @@ class Wavefunction(Function):
 
     def _eval_transpose(self):
         return self
-
-    @property
-    def free_symbols(self):
-        return self.expr.free_symbols
 
     @property
     def is_commutative(self):
@@ -917,7 +899,7 @@ class Wavefunction(Function):
 
         """
 
-        return (self.norm == 1.0)
+        return equal_valued(self.norm, 1)
 
     @property  # type: ignore
     @cacheit

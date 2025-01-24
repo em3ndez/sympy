@@ -1,13 +1,18 @@
 from itertools import product
 
-from sympy import Tuple, Add, Mul, Matrix, log, expand, S
-from sympy.core.trace import Tr
+from sympy.core.add import Add
+from sympy.core.containers import Tuple
+from sympy.core.function import expand
+from sympy.core.mul import Mul
+from sympy.core.singleton import S
+from sympy.functions.elementary.exponential import log
+from sympy.matrices.dense import MutableDenseMatrix as Matrix
 from sympy.printing.pretty.stringpict import prettyForm
 from sympy.physics.quantum.dagger import Dagger
 from sympy.physics.quantum.operator import HermitianOperator
 from sympy.physics.quantum.represent import represent
 from sympy.physics.quantum.matrixutils import numpy_ndarray, scipy_sparse_matrix, to_numpy
-from sympy.physics.quantum.tensorproduct import TensorProduct, tensor_product_simp
+from sympy.physics.quantum.trace import Tr
 
 
 class Density(HermitianOperator):
@@ -178,13 +183,10 @@ class Density(HermitianOperator):
                              ' Non-commutative instance required'
                              ' for outer product.')
 
-        # Muls of Tensor Products should be expanded
-        # before this function is called
-        if (isinstance(nc_part1[0], TensorProduct) and len(nc_part1) == 1
-                and len(nc_part2) == 1):
-            op = tensor_product_simp(nc_part1[0]*Dagger(nc_part2[0]))
-        else:
-            op = Mul(*nc_part1)*Dagger(Mul(*nc_part2))
+        # We were able to remove some tensor product simplifications that
+        # used to be here as those transformations are not automatically
+        # applied by transforms.py.
+        op = Mul(*nc_part1)*Dagger(Mul(*nc_part2))
 
         return Mul(*c_part1)*Mul(*c_part2) * op
 
@@ -219,7 +221,7 @@ def entropy(density):
     Parameters
     ==========
 
-    density : density matrix of type Density, sympy matrix,
+    density : density matrix of type Density, SymPy matrix,
     scipy.sparse or numpy.ndarray
 
     Examples
@@ -250,7 +252,7 @@ def entropy(density):
         return -np.sum(eigvals*np.log(eigvals))
     else:
         raise ValueError(
-            "numpy.ndarray, scipy.sparse or sympy matrix expected")
+            "numpy.ndarray, scipy.sparse or SymPy matrix expected")
 
 
 def fidelity(state1, state2):

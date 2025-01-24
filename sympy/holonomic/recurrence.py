@@ -1,6 +1,7 @@
 """Recurrence Operators"""
 
-from sympy import symbols, Symbol, S
+from sympy.core.singleton import S
+from sympy.core.symbol import (Symbol, symbols)
 from sympy.printing import sstr
 from sympy.core.sympify import sympify
 
@@ -16,7 +17,7 @@ def RecurrenceOperators(base, generator):
     Examples
     ========
 
-    >>> from sympy.polys.domains import ZZ
+    >>> from sympy import ZZ
     >>> from sympy import symbols
     >>> from sympy.holonomic.recurrence import RecurrenceOperators
     >>> n = symbols('n', integer=True)
@@ -40,7 +41,7 @@ class RecurrenceOperatorAlgebra:
     Examples
     ========
 
-    >>> from sympy.polys.domains import ZZ
+    >>> from sympy import ZZ
     >>> from sympy import symbols
     >>> from sympy.holonomic.recurrence import RecurrenceOperators
     >>> n = symbols('n', integer=True)
@@ -112,7 +113,7 @@ class RecurrenceOperator:
     ========
 
     >>> from sympy.holonomic.recurrence import RecurrenceOperator, RecurrenceOperators
-    >>> from sympy.polys.domains import ZZ
+    >>> from sympy import ZZ
     >>> from sympy import symbols
     >>> n = symbols('n', integer=True)
     >>> R, Sn = RecurrenceOperators(ZZ.old_poly_ring(n),'Sn')
@@ -173,12 +174,8 @@ class RecurrenceOperator:
 
         def _mul_dmp_diffop(b, listofother):
             if isinstance(listofother, list):
-                sol = []
-                for i in listofother:
-                    sol.append(i * b)
-                return sol
-            else:
-                return [b * listofother]
+                return [i * b for i in listofother]
+            return [b * listofother]
 
         sol = _mul_dmp_diffop(listofself[0], listofother)
 
@@ -214,10 +211,7 @@ class RecurrenceOperator:
             if not isinstance(other, self.parent.base.dtype):
                 other = (self.parent.base).from_sympy(other)
 
-            sol = []
-            for j in self.listofpoly:
-                sol.append(other * j)
-
+            sol = [other * j for j in self.listofpoly]
             return RecurrenceOperator(sol, self.parent)
 
     def __add__(self, other):
@@ -235,9 +229,7 @@ class RecurrenceOperator:
                 list_other = [((self.parent).base).from_sympy(other)]
             else:
                 list_other = [other]
-            sol = []
-            sol.append(list_self[0] + list_other[0])
-            sol += list_self[1:]
+            sol = [list_self[0] + list_other[0]] + list_self[1:]
 
             return RecurrenceOperator(sol, self.parent)
 
@@ -252,24 +244,22 @@ class RecurrenceOperator:
     def __pow__(self, n):
         if n == 1:
             return self
+        result = RecurrenceOperator([self.parent.base.one], self.parent)
         if n == 0:
-            return RecurrenceOperator([self.parent.base.one], self.parent)
+            return result
         # if self is `Sn`
         if self.listofpoly == self.parent.shift_operator.listofpoly:
-            sol = []
-            for i in range(0, n):
-                sol.append(self.parent.base.zero)
-            sol.append(self.parent.base.one)
-
+            sol = [self.parent.base.zero] * n + [self.parent.base.one]
             return RecurrenceOperator(sol, self.parent)
-
-        else:
-            if n % 2 == 1:
-                powreduce = self**(n - 1)
-                return powreduce * self
-            elif n % 2 == 0:
-                powreduce = self**(n / 2)
-                return powreduce * powreduce
+        x = self
+        while True:
+            if n % 2:
+                result *= x
+            n >>= 1
+            if not n:
+                break
+            x *= x
+        return result
 
     def __str__(self):
         listofpoly = self.listofpoly
@@ -278,6 +268,8 @@ class RecurrenceOperator:
         for i, j in enumerate(listofpoly):
             if j == self.parent.base.zero:
                 continue
+
+            j = self.parent.base.to_sympy(j)
 
             if i == 0:
                 print_str += '(' + sstr(j) + ')'
@@ -302,14 +294,8 @@ class RecurrenceOperator:
                 return True
             else:
                 return False
-        else:
-            if self.listofpoly[0] == other:
-                for i in self.listofpoly[1:]:
-                    if i is not self.parent.base.zero:
-                        return False
-                return True
-            else:
-                return False
+        return self.listofpoly[0] == other and \
+            all(i is self.parent.base.zero for i in self.listofpoly[1:])
 
 
 class HolonomicSequence:
@@ -349,16 +335,8 @@ class HolonomicSequence:
     __str__ = __repr__
 
     def __eq__(self, other):
-        if self.recurrence == other.recurrence:
-            if self.n == other.n:
-                if self._have_init_cond and other._have_init_cond:
-                    if self.u0 == other.u0:
-                        return True
-                    else:
-                        return False
-                else:
-                    return True
-            else:
-                return False
-        else:
+        if self.recurrence != other.recurrence or self.n != other.n:
             return False
+        if self._have_init_cond and other._have_init_cond:
+            return self.u0 == other.u0
+        return True

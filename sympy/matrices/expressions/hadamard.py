@@ -1,10 +1,17 @@
+from collections import Counter
+
 from sympy.core import Mul, sympify
-from sympy.matrices.common import ShapeError
+from sympy.core.add import Add
+from sympy.core.expr import ExprBuilder
+from sympy.core.sorting import default_sort_key
+from sympy.functions.elementary.exponential import log
 from sympy.matrices.expressions.matexpr import MatrixExpr
+from sympy.matrices.expressions._shape import validate_matadd_integer as validate
 from sympy.matrices.expressions.special import ZeroMatrix, OneMatrix
 from sympy.strategies import (
     unpack, flatten, condition, exhaust, rm_id, sort
 )
+from sympy.utilities.exceptions import sympy_deprecation_warning
 
 
 def hadamard_product(*matrices):
@@ -14,7 +21,7 @@ def hadamard_product(*matrices):
     Examples
     ========
 
-    >>> from sympy.matrices import hadamard_product, MatrixSymbol
+    >>> from sympy import hadamard_product, MatrixSymbol
     >>> A = MatrixSymbol('A', 2, 3)
     >>> B = MatrixSymbol('B', 2, 3)
     >>> hadamard_product(A)
@@ -26,12 +33,9 @@ def hadamard_product(*matrices):
     """
     if not matrices:
         raise TypeError("Empty Hadamard product is undefined")
-    validate(*matrices)
     if len(matrices) == 1:
         return matrices[0]
-    else:
-        matrices = [i for i in matrices if not i.is_Identity]
-        return HadamardProduct(*matrices).doit()
+    return HadamardProduct(*matrices).doit()
 
 
 class HadamardProduct(MatrixExpr):
@@ -43,7 +47,7 @@ class HadamardProduct(MatrixExpr):
 
     Hadamard product for matrix symbols:
 
-    >>> from sympy.matrices import hadamard_product, HadamardProduct, MatrixSymbol
+    >>> from sympy import hadamard_product, HadamardProduct, MatrixSymbol
     >>> A = MatrixSymbol('A', 5, 5)
     >>> B = MatrixSymbol('B', 5, 5)
     >>> isinstance(hadamard_product(A, B), HadamardProduct)
@@ -58,9 +62,22 @@ class HadamardProduct(MatrixExpr):
     """
     is_HadamardProduct = True
 
-    def __new__(cls, *args, evaluate=False, check=True):
+    def __new__(cls, *args, evaluate=False, check=None):
         args = list(map(sympify, args))
-        if check:
+        if len(args) == 0:
+            # We currently don't have a way to support one-matrices of generic dimensions:
+            raise ValueError("HadamardProduct needs at least one argument")
+
+        if not all(isinstance(arg, MatrixExpr) for arg in args):
+            raise TypeError("Mix of Matrix and Scalar symbols")
+
+        if check is not None:
+            sympy_deprecation_warning(
+                "Passing check to HadamardProduct is deprecated and the check argument will be removed in a future version.",
+                deprecated_since_version="1.11",
+                active_deprecations_target='remove-check-argument-from-matrix-operations')
+
+        if check is not False:
             validate(*args)
 
         obj = super().__new__(cls, *args)
@@ -79,11 +96,12 @@ class HadamardProduct(MatrixExpr):
         from sympy.matrices.expressions.transpose import transpose
         return HadamardProduct(*list(map(transpose, self.args)))
 
-    def doit(self, **ignored):
-        expr = self.func(*[i.doit(**ignored) for i in self.args])
+    def doit(self, **hints):
+        expr = self.func(*(i.doit(**hints) for i in self.args))
         # Check for explicit matrices:
-        from sympy import MatrixBase
+        from sympy.matrices.matrixbase import MatrixBase
         from sympy.matrices.immutable import ImmutableMatrix
+
         explicit = [i for i in expr.args if isinstance(i, MatrixBase)]
         if explicit:
             remainder = [i for i in expr.args if i not in explicit]
@@ -95,7 +113,6 @@ class HadamardProduct(MatrixExpr):
         return canonicalize(expr)
 
     def _eval_derivative(self, x):
-        from sympy import Add
         terms = []
         args = list(self.args)
         for i in range(len(args)):
@@ -104,7 +121,6 @@ class HadamardProduct(MatrixExpr):
         return Add.fromiter(terms)
 
     def _eval_derivative_matrix_lines(self, x):
-        from sympy.core.expr import ExprBuilder
         from sympy.tensor.array.expressions.array_expressions import ArrayDiagonal
         from sympy.tensor.array.expressions.array_expressions import ArrayTensorProduct
         from sympy.matrices.expressions.matexpr import _make_matrix
@@ -146,15 +162,6 @@ class HadamardProduct(MatrixExpr):
         return lines
 
 
-def validate(*args):
-    if not all(arg.is_Matrix for arg in args):
-        raise TypeError("Mix of Matrix and Scalar symbols")
-    A = args[0]
-    for B in args[1:]:
-        if A.shape != B.shape:
-            raise ShapeError("Matrices %s and %s are not aligned" % (A, B))
-
-
 # TODO Implement algorithm for rewriting Hadamard product as diagonal matrix
 # if matmul identy matrix is multiplied.
 def canonicalize(x):
@@ -163,8 +170,8 @@ def canonicalize(x):
     Examples
     ========
 
-    >>> from sympy.matrices.expressions import MatrixSymbol, HadamardProduct
-    >>> from sympy.matrices.expressions import OneMatrix, ZeroMatrix
+    >>> from sympy import MatrixSymbol, HadamardProduct
+    >>> from sympy import OneMatrix, ZeroMatrix
     >>> from sympy.matrices.expressions.hadamard import canonicalize
     >>> from sympy import init_printing
     >>> init_printing(use_unicode=False)
@@ -239,8 +246,6 @@ def canonicalize(x):
 
     .. [1] https://en.wikipedia.org/wiki/Hadamard_product_(matrices)
     """
-    from sympy.core.compatibility import default_sort_key
-
     # Associativity
     rule = condition(
             lambda x: isinstance(x, HadamardProduct),
@@ -270,7 +275,6 @@ def canonicalize(x):
 
     # Rewriting with HadamardPower
     if isinstance(x, HadamardProduct):
-        from collections import Counter
         tally = Counter(x.args)
 
         new_arg = []
@@ -366,15 +370,12 @@ class HadamardPower(MatrixExpr):
     def __new__(cls, base, exp):
         base = sympify(base)
         exp = sympify(exp)
+
         if base.is_scalar and exp.is_scalar:
             return base ** exp
 
-        if base.is_Matrix and exp.is_Matrix and base.shape != exp.shape:
-            raise ValueError(
-                'The shape of the base {} and '
-                'the shape of the exponent {} do not match.'
-                .format(base.shape, exp.shape)
-                )
+        if isinstance(base, MatrixExpr) and isinstance(exp, MatrixExpr):
+            validate(base, exp)
 
         obj = super().__new__(cls, base, exp)
         return obj
@@ -420,7 +421,6 @@ class HadamardPower(MatrixExpr):
         return HadamardPower(transpose(self.base), self.exp)
 
     def _eval_derivative(self, x):
-        from sympy import log
         dexp = self.exp.diff(x)
         logbase = self.base.applyfunc(log)
         dlbase = logbase.diff(x)
@@ -432,7 +432,6 @@ class HadamardPower(MatrixExpr):
     def _eval_derivative_matrix_lines(self, x):
         from sympy.tensor.array.expressions.array_expressions import ArrayTensorProduct
         from sympy.tensor.array.expressions.array_expressions import ArrayDiagonal
-        from sympy.core.expr import ExprBuilder
         from sympy.matrices.expressions.matexpr import _make_matrix
 
         lr = self.base._eval_derivative_matrix_lines(x)
