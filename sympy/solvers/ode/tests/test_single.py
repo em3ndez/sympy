@@ -32,9 +32,22 @@ Functions that are for internal use:
    ODEs which raises exception.
 
 """
-from sympy import (acos, acosh, asin, asinh, atan, cos, Derivative, Dummy, diff, cbrt,
-    E, Eq, exp, hyper, I, im, Integral, integrate, LambertW, log, Mul, Ne, pi, Piecewise, Rational,
-    re, rootof, S, sin, sinh, cosh, tan, tanh, sec, sqrt, symbols, Ei, erfi)
+from sympy.core.function import (Derivative, diff)
+from sympy.core.mul import Mul
+from sympy.core.numbers import (E, I, Rational, pi)
+from sympy.core.relational import (Eq, Ne)
+from sympy.core.singleton import S
+from sympy.core.symbol import (Dummy, symbols)
+from sympy.functions.elementary.complexes import (im, re)
+from sympy.functions.elementary.exponential import (LambertW, exp, log)
+from sympy.functions.elementary.hyperbolic import (asinh, cosh, sinh, tanh)
+from sympy.functions.elementary.miscellaneous import (cbrt, sqrt)
+from sympy.functions.elementary.piecewise import Piecewise
+from sympy.functions.elementary.trigonometric import (acos, asin, atan, cos, sec, sin, tan)
+from sympy.functions.special.error_functions import (Ei, erfi)
+from sympy.functions.special.hyper import hyper
+from sympy.integrals.integrals import (Integral, integrate)
+from sympy.polys.rootoftools import rootof
 
 from sympy.core import Function, Symbol
 from sympy.functions import airyai, airybi, besselj, bessely, lowergamma
@@ -46,7 +59,7 @@ from sympy.solvers.ode.single import (FirstLinear, ODEMatchError,
 
 from sympy.solvers.ode.subscheck import checkodesol
 
-from sympy.testing.pytest import raises, slow, ON_TRAVIS
+from sympy.testing.pytest import raises, slow
 import traceback
 
 
@@ -57,6 +70,7 @@ y = Symbol('y')
 f = Function('f')
 g = Function('g')
 C1, C2, C3, C4, C5, C6, C7, C8, C9, C10  = symbols('C1:11')
+a, b, c = symbols('a b c')
 
 
 hint_message = """\
@@ -261,7 +275,7 @@ def _test_particular_example(our_hint, ode_example, solver_flag=False):
             if len(expected_sol) == 1:
                 expected_checkodesol = (True, 0)
 
-            if not (checkodesol_too_slow and ON_TRAVIS):
+            if not checkodesol_too_slow:
                 if not checkodesol_XFAIL:
                     if checkodesol(eq, dsolve_sol, func, solve_for_func=False) != expected_checkodesol:
                         result['unsolve_list'] = example
@@ -345,6 +359,7 @@ def test_linear_coefficients():
     _ode_solver_test(_get_examples_ode_sol_linear_coefficients)
 
 
+@slow
 def test_1st_homogeneous_coeff_ode():
     #These were marked as test_1st_homogeneous_coeff_corner_case
     eq1 = f(x).diff(x) - f(x)/x
@@ -365,6 +380,7 @@ def test_slow_examples_1st_homogeneous_coeff_ode():
     _ode_solver_test(_get_examples_ode_sol_1st_homogeneous_coeff_best, run_slow_test=True)
 
 
+@slow
 def test_nth_linear_constant_coeff_homogeneous():
     _ode_solver_test(_get_examples_ode_sol_nth_linear_constant_coeff_homogeneous)
 
@@ -378,14 +394,16 @@ def test_Airy_equation():
     _ode_solver_test(_get_examples_ode_sol_2nd_linear_airy)
 
 
+@slow
 def test_lie_group():
     _ode_solver_test(_get_examples_ode_sol_lie_group)
 
 
+@slow
 def test_separable_reduced():
     df = f(x).diff(x)
     eq = (x / f(x))*df  + tan(x**2*f(x) / (x**2*f(x) - 1))
-    assert classify_ode(eq) == ('separable_reduced', 'lie_group',
+    assert classify_ode(eq) == ('factorable', 'separable_reduced', 'lie_group',
         'separable_reduced_Integral')
     _ode_solver_test(_get_examples_ode_sol_separable_reduced)
 
@@ -395,6 +413,7 @@ def test_slow_examples_separable_reduced():
     _ode_solver_test(_get_examples_ode_sol_separable_reduced, run_slow_test=True)
 
 
+@slow
 def test_2nd_2F1_hypergeometric():
     _ode_solver_test(_get_examples_ode_sol_2nd_2F1_hypergeometric)
 
@@ -408,6 +427,7 @@ def test_2nd_2F1_hypergeometric_integral():
     assert checkodesol(eq, sol) == (True, 0)
 
 
+@slow
 def test_2nd_nonlinear_autonomous_conserved():
     _ode_solver_test(_get_examples_ode_sol_2nd_nonlinear_autonomous_conserved)
 
@@ -423,10 +443,12 @@ def test_2nd_nonlinear_autonomous_conserved_integral():
     assert checkodesol(eq, [s.doit() for s in solved]) == [(True, 0), (True, 0)]
 
 
+@slow
 def test_2nd_linear_bessel_equation():
     _ode_solver_test(_get_examples_ode_sol_2nd_linear_bessel)
 
 
+@slow
 def test_nth_algebraic():
     eqn = f(x) + f(x)*f(x).diff(x)
     solns = [Eq(f(x), exp(x)),
@@ -465,6 +487,7 @@ def test_slow_examples_1st_exact():
     _ode_solver_test(_get_examples_ode_sol_1st_exact, run_slow_test=True)
 
 
+@slow
 def test_1st_exact():
     _ode_solver_test(_get_examples_ode_sol_1st_exact)
 
@@ -490,6 +513,7 @@ def test_slow_examples_separable():
     _ode_solver_test(_get_examples_ode_sol_separable, run_slow_test=True)
 
 
+@slow
 def test_nth_linear_constant_coeff_undetermined_coefficients():
     #issue-https://github.com/sympy/sympy/issues/5787
     # This test case is to show the classification of imaginary constants under
@@ -512,10 +536,12 @@ def test_nth_order_reducible():
     _ode_solver_test(_get_examples_ode_sol_nth_order_reducible)
 
 
+@slow
 def test_separable():
     _ode_solver_test(_get_examples_ode_sol_separable)
 
 
+@slow
 def test_factorable():
     assert integrate(-asin(f(2*x)+pi), x) == -Integral(asin(pi + f(2*x)), x)
     _ode_solver_test(_get_examples_ode_sol_factorable)
@@ -530,6 +556,7 @@ def test_Riccati_special_minus2():
     _ode_solver_test(_get_examples_ode_sol_riccati)
 
 
+@slow
 def test_1st_rational_riccati():
     _ode_solver_test(_get_examples_ode_sol_1st_rational_riccati)
 
@@ -543,9 +570,10 @@ def test_1st_linear():
 
 
 def test_almost_linear():
-   _ode_solver_test(_get_examples_ode_sol_almost_linear)
+    _ode_solver_test(_get_examples_ode_sol_almost_linear)
 
 
+@slow
 def test_Liouville_ODE():
     hint = 'Liouville'
     not_Liouville1 = classify_ode(diff(f(x), x)/x + f(x)*diff(f(x), x, x)/2 -
@@ -588,6 +616,7 @@ def test_nth_order_linear_euler_eq_nonhomogeneous_undetermined_coefficients():
     _ode_solver_test(_get_examples_ode_sol_euler_undetermined_coeff)
 
 
+@slow
 def test_nth_order_linear_euler_eq_nonhomogeneous_variation_of_parameters():
     x, t = symbols('x, t')
     a, b, c, d = symbols('a, b, c, d', integer=True)
@@ -925,8 +954,8 @@ def _get_examples_ode_sol_factorable():
     'fact_06': {
         'eq': (f(x).diff(x, 2)-exp(f(x)))*f(x).diff(x),
         'sol': [
-            Eq(f(x), log(C1/(cos(C1*sqrt(-1/C1)*(C2 + x)) - 1))),
-            Eq(f(x), log(C1/(cos(C1*sqrt(-1/C1)*(C2 - x)) - 1))),
+            Eq(f(x), log(-C1/(cos(sqrt(-C1)*(C2 + x)) + 1))),
+            Eq(f(x), log(-C1/(cos(sqrt(-C1)*(C2 - x)) + 1))),
             Eq(f(x), C1)
         ],
         'slow': True,
@@ -1014,14 +1043,14 @@ def _get_examples_ode_sol_factorable():
     # This is from issue: https://github.com/sympy/sympy/issues/9446
     'fact_18':{
         'eq': Eq(f(2 * x), sin(Derivative(f(x)))),
-        'sol': [Eq(f(x), C1 + pi*x - Integral(asin(f(2*x)), x)), Eq(f(x), C1 + Integral(asin(f(2*x)), x))],
+        'sol': [Eq(f(x), C1 + Integral(pi - asin(f(2*x)), x)), Eq(f(x), C1 + Integral(asin(f(2*x)), x))],
         'checkodesol_XFAIL':True
     },
 
     # This is from issue: https://github.com/sympy/sympy/issues/7093
     'fact_19': {
         'eq': Derivative(f(x), x)**2 - x**3,
-        'sol': [Eq(f(x), C1 - 2*x*sqrt(x**3)/5), Eq(f(x), C1 + 2*x*sqrt(x**3)/5)],
+        'sol': [Eq(f(x), C1 - 2*x**Rational(5,2)/5), Eq(f(x), C1 + 2*x**Rational(5,2)/5)],
     },
 
     'fact_20': {
@@ -1035,7 +1064,7 @@ def _get_examples_ode_sol_factorable():
 
 @_add_example_keys
 def _get_examples_ode_sol_almost_linear():
-    from sympy import Ei
+    from sympy.functions.special.error_functions import Ei
     A = Symbol('A', positive=True)
     f = Function('f')
     d = f(x).diff(x)
@@ -1343,7 +1372,7 @@ def _get_examples_ode_sol_nth_order_reducible():
 
     'reducible_10': {
         'eq': f(x).diff(x, 5) + 2*f(x).diff(x, 3) + f(x).diff(x),
-        'sol': [Eq(f(x), C1 + C2*(x*sin(x) + cos(x)) + C3*(-x*cos(x) + sin(x)) + C4*sin(x) + C5*cos(x))],
+        'sol': [Eq(f(x), C1 + C2*x*sin(x) + C2*cos(x) - C3*x*cos(x) + C3*sin(x) + C4*sin(x) + C5*cos(x))],
         'slow': True,
     },
 
@@ -1357,7 +1386,8 @@ def _get_examples_ode_sol_nth_order_reducible():
     # Needs to be a way to know how to combine derivatives in the expression
     'reducible_12': {
         'eq': Derivative(x*f(x), x, x, x) + Derivative(f(x), x, x, x),
-        'sol': [Eq(f(x), C1 + C2*x + C3/Mul(2, (x + 1), evaluate=False))], # 2-arg Mul!
+        'sol': [Eq(f(x), C1 + C3/Mul(2, (x**2 + 2*x + 1), evaluate=False) +
+        x*(C2 + C3/Mul(2, (x**2 + 2*x + 1), evaluate=False)))], # 2-arg Mul!
         'slow': True,
     },
     }
@@ -1607,15 +1637,15 @@ def _get_examples_ode_sol_nth_linear_undetermined_coefficients():
     # https://github.com/sympy/sympy/issues/12623
     'undet_38': {
         'eq': Eq( u(t).diff(t,t) + R /L*u(t).diff(t) + 1/(L*C)*u(t), alpha),
-        'sol': [Eq(u(t), C*L*alpha + C1*exp(t*(-R - sqrt(C*R**2 - 4*L)/sqrt(C))/(2*L))
-        + C2*exp(t*(-R + sqrt(C*R**2 - 4*L)/sqrt(C))/(2*L)))],
+        'sol': [Eq(u(t), C*L*alpha + C2*exp(-t*(R + sqrt(C*R**2 - 4*L)/sqrt(C))/(2*L))
+        + C1*exp(t*(-R + sqrt(C*R**2 - 4*L)/sqrt(C))/(2*L)))],
         'func': u(t)
     },
 
     'undet_39': {
         'eq': Eq( L*C*u(t).diff(t,t) + R*C*u(t).diff(t) + u(t), E_0*exp(I*omega*t) ),
-        'sol': [Eq(u(t), C1*exp(t*(-R - sqrt(C*R**2 - 4*L)/sqrt(C))/(2*L))
-        + C2*exp(t*(-R + sqrt(C*R**2 - 4*L)/sqrt(C))/(2*L))
+        'sol': [Eq(u(t), C2*exp(-t*(R + sqrt(C*R**2 - 4*L)/sqrt(C))/(2*L))
+        + C1*exp(t*(-R + sqrt(C*R**2 - 4*L)/sqrt(C))/(2*L))
         - E_0*exp(I*omega*t)/(C*L*omega**2 - I*C*R*omega - 1))],
         'func': u(t),
     },
@@ -1675,10 +1705,8 @@ def _get_examples_ode_sol_separable():
 
     'separable_07': {
         'eq': f(x)*x**2*f(x).diff(x) - f(x)**3 - 2*x**2*f(x).diff(x),
-        'sol': [
-            Eq(f(x), (-x + sqrt(x*(4*C1*x + x - 4)))/(C1*x - 1)/2),
-            Eq(f(x), -((x + sqrt(x*(4*C1*x + x - 4)))/(C1*x - 1))/2)
-        ],
+        'sol': [Eq(f(x), (-x - sqrt(x*(4*C1*x + x - 4)))/(C1*x - 1)/2),
+                Eq(f(x), (-x + sqrt(x*(4*C1*x + x - 4)))/(C1*x - 1)/2)],
         'slow': True,
     },
 
@@ -1779,7 +1807,7 @@ def _get_examples_ode_sol_separable():
     # https://github.com/sympy/sympy/issues/7081
     'separable_23': {
         'eq': x*(f(x).diff(x)) + 1 - f(x)**2,
-        'sol': [Eq(f(x), -1/(-C1 + x**2)*(C1 + x**2))],
+        'sol': [Eq(f(x), (-C1 - x**2)/(-C1 + x**2))],
     },
 
     # https://github.com/sympy/sympy/issues/10379
@@ -1800,6 +1828,12 @@ def _get_examples_ode_sol_separable():
         'sol': [Eq(v(t), -68.585712797928991/tanh(C1 - 0.14288690166235204*t))],
         'func': v(t),
         'checkodesol_XFAIL': True,
+    },
+
+    #https://github.com/sympy/sympy/issues/22155
+    'separable_27': {
+        'eq': f(x).diff(x) - exp(f(x) - x),
+        'sol': [Eq(f(x), log(-exp(x)/(C1*exp(x) - 1)))],
     }
     }
     }
@@ -2068,6 +2102,10 @@ def _get_examples_ode_sol_2nd_linear_bessel():
         'eq': f(x).diff(x, x) + 2/x*f(x).diff(x) + f(x),
         'sol': [Eq(f(x), (C1*besselj(S(1)/2, x) + C2*bessely(S(1)/2, x))/sqrt(x))],
     },
+    '2nd_lin_bessel_12': {
+        'eq': x**2*f(x).diff(x, 2) + x*f(x).diff(x) + (a**2*x**2/c**2 - b**2)*f(x),
+        'sol': [Eq(f(x), C1*besselj(sqrt(b**2), x*sqrt(a**2/c**2)) + C2*bessely(sqrt(b**2), x*sqrt(a**2/c**2)))],
+    },
     }
     }
 
@@ -2329,7 +2367,7 @@ def _get_examples_ode_sol_lie_group():
 
     'lie_group_10': {
         'eq': x**2*(f(x).diff(x)) - f(x) + x**2*exp(x - (1/x)),
-        'sol': [Eq(f(x), -((C1 + exp(x))*exp(-1/x)))],
+        'sol': [Eq(f(x), (C1 - exp(x))*exp(-1/x))],
         'XFAIL': ['factorable'], #It raises Recursion Error (maixmum depth exceeded)
     },
 
@@ -2450,13 +2488,13 @@ def _get_examples_ode_sol_nth_linear_constant_coeff_homogeneous():
 
     'lin_const_coeff_hom_06': {
         'eq': Eq(f(x).diff(x, 2) + 2*f(x).diff(x) - f(x), 0),
-        'sol': [Eq(f(x), C1*exp(x*(-1 + sqrt(2))) + C2*exp(x*(-sqrt(2) - 1)))],
+        'sol': [Eq(f(x), C1*exp(x*(-1 + sqrt(2))) + C2*exp(-x*(sqrt(2) + 1)))],
         'slow': True,
     },
 
     'lin_const_coeff_hom_07': {
         'eq': diff(f(x), x, 3) + diff(f(x), x, 2) - 10*diff(f(x), x) - 6*f(x),
-        'sol': [Eq(f(x), C1*exp(3*x) + C2*exp(x*(-2 - sqrt(2))) + C3*exp(x*(-2 + sqrt(2))))],
+        'sol': [Eq(f(x), C1*exp(3*x) + C3*exp(-x*(2 + sqrt(2))) + C2*exp(x*(-2 + sqrt(2))))],
         'slow': True,
     },
 
@@ -2826,7 +2864,8 @@ def _get_examples_ode_sol_1st_homogeneous_coeff_best():
 
     '1st_homogeneous_coeff_best_08': {
         'eq': f(x)**2 + (x*sqrt(f(x)**2 - x**2) - x*f(x))*f(x).diff(x),
-        'sol': [Eq(log(x), C1 - log(f(x)/x) + acosh(f(x)/x))],
+        'sol': [Eq(f(x), -C1*sqrt(-x/(x - 2*C1))), Eq(f(x), C1*sqrt(-x/(x - 2*C1)))],
+        'checkodesol_XFAIL': True  # solutions are valid in a range
     },
     }
     }

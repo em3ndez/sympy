@@ -1,6 +1,6 @@
 from sympy.utilities.iterables import \
     flatten, connected_components, strongly_connected_components
-from .common import NonSquareMatrixError
+from .exceptions import NonSquareMatrixError
 
 
 def _connected_components(M):
@@ -63,6 +63,11 @@ def _strongly_connected_components(M):
     """
     if not M.is_square:
         raise NonSquareMatrixError
+
+    # RepMatrix uses the more efficient DomainMatrix.scc() method
+    rep = getattr(M, '_rep', None)
+    if rep is not None:
+        return rep.scc()
 
     V = range(M.rows)
     E = sorted(M.todok().keys())

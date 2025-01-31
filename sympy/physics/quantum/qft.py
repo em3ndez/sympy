@@ -11,7 +11,11 @@ Todo:
 * Fix the printing of Rk gates in plotting.
 """
 
-from sympy import Expr, Matrix, exp, I, pi, Integer, Symbol
+from sympy.core.expr import Expr
+from sympy.core.numbers import (I, Integer, pi)
+from sympy.core.symbol import Symbol
+from sympy.functions.elementary.exponential import exp
+from sympy.matrices.dense import Matrix
 from sympy.functions import sqrt
 
 from sympy.physics.quantum.qapply import qapply
@@ -22,6 +26,8 @@ from sympy.physics.quantum.tensorproduct import matrix_tensor_product
 from sympy.physics.quantum.gate import (
     Gate, HadamardGate, SwapGate, OneQubitGate, CGate, PhaseGate, TGate, ZGate
 )
+
+from sympy.functions.elementary.complexes import sign
 
 __all__ = [
     'QFT',
@@ -81,7 +87,7 @@ class RkGate(OneQubitGate):
 
     def get_target_matrix(self, format='sympy'):
         if format == 'sympy':
-            return Matrix([[1, 0], [0, exp(Integer(2)*pi*I/(Integer(2)**self.k))]])
+            return Matrix([[1, 0], [0, exp(sign(self.k)*Integer(2)*pi*I/(Integer(2)**abs(self.k)))]])
         raise NotImplementedError(
             'Invalid format for the R_k gate: %r' % format)
 

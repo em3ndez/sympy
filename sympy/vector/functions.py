@@ -3,7 +3,9 @@ from sympy.vector.deloperator import Del
 from sympy.vector.scalar import BaseScalar
 from sympy.vector.vector import Vector, BaseVector
 from sympy.vector.operators import gradient, curl, divergence
-from sympy import diff, integrate, S, simplify
+from sympy.core.function import diff
+from sympy.core.singleton import S
+from sympy.integrals.integrals import integrate
 from sympy.core import sympify
 from sympy.vector.dyadic import Dyadic
 
@@ -56,7 +58,7 @@ def express(expr, system, system2=None, variables=False):
 
     """
 
-    if expr == 0 or expr == Vector.zero:
+    if expr in (0, Vector.zero):
         return expr
 
     if not isinstance(system, CoordSys3D):
@@ -71,11 +73,7 @@ def express(expr, system, system2=None, variables=False):
         if variables:
             # If variables attribute is True, substitute
             # the coordinate variables in the Vector
-            system_list = []
-            for x in expr.atoms(BaseScalar, BaseVector):
-                if x.system != system:
-                    system_list.append(x.system)
-            system_list = set(system_list)
+            system_list = {x.system for x in expr.atoms(BaseScalar, BaseVector)} - {system}
             subs_dict = {}
             for f in system_list:
                 subs_dict.update(f.scalar_map(system))
@@ -154,8 +152,8 @@ def directional_derivative(field, direction_vector):
     5*R.x**2 + 30*R.x*R.z
 
     """
-    from sympy.vector.operators import _get_coord_sys_from_expr
-    coord_sys = _get_coord_sys_from_expr(field)
+    from sympy.vector.operators import _get_coord_systems
+    coord_sys = _get_coord_systems(field)
     if len(coord_sys) > 0:
         # TODO: This gets a random coordinate system in case of multiple ones:
         coord_sys = next(iter(coord_sys))
@@ -456,10 +454,7 @@ def _path(from_object, to_object):
         from_path.append(obj)
         obj = obj._parent
     index = len(from_path)
-    i = other_path.index(obj)
-    while i >= 0:
-        from_path.append(other_path[i])
-        i -= 1
+    from_path.extend(other_path[other_path.index(obj)::-1])
     return index, from_path
 
 
@@ -508,7 +503,7 @@ def orthogonalize(*vlist, orthonormal=False):
         # TODO : The following line introduces a performance issue
         # and needs to be changed once a good solution for issue #10279 is
         # found.
-        if simplify(term).equals(Vector.zero):
+        if term.equals(Vector.zero):
             raise ValueError("Vector set not linearly independent")
         ortho_vlist.append(term)
 
