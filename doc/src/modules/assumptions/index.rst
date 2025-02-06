@@ -58,12 +58,12 @@ Contents
 ========
 
 .. toctree::
-    :maxdepth: 3
+   :titlesonly:
 
-    ask.rst
-    assume.rst
-    refine.rst
-    predicates.rst
+   ask.rst
+   assume.rst
+   refine.rst
+   predicates.rst
 
 
 Performance improvements
@@ -80,5 +80,5 @@ system (https://en.wikipedia.org/wiki/Truth_maintenance_system) could be impleme
 Misc
 ====
 
-You can find more examples in the in the form of test under directory
-sympy/assumptions/tests/
+You can find more examples in the form of tests in the directory
+``sympy/assumptions/tests/``

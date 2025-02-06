@@ -1,16 +1,24 @@
+.. _ntheory-module:
+
 =============
 Number Theory
 =============
 
-.. module:: sympy.ntheory.generate
+
 
 Ntheory Class Reference
------------------------
-.. autoclass:: Sieve
+=======================
+
+.. autoclass:: sympy.ntheory.generate.Sieve
+   :members:
+
+.. autoclass:: sympy.ntheory.factor_.FactorCache
    :members:
 
 Ntheory Functions Reference
----------------------------
+===========================
+
+.. module:: sympy.ntheory.generate
 
 .. autofunction:: prime
 
@@ -37,8 +45,6 @@ Ntheory Functions Reference
 .. autofunction:: smoothness
 
 .. autofunction:: smoothness_p
-
-.. autofunction:: trailing
 
 .. autofunction:: multiplicity
 
@@ -70,33 +76,25 @@ Ntheory Functions Reference
 
 .. autofunction:: antidivisor_count
 
-.. autoclass:: totient
-   :members:
+.. autofunction:: totient
 
-.. autoclass:: reduced_totient
-   :members:
+.. autofunction:: reduced_totient
 
-.. autoclass:: divisor_sigma
-   :members:
+.. autofunction:: divisor_sigma
 
-.. autoclass:: udivisor_sigma
-   :members:
+.. autofunction:: udivisor_sigma
 
 .. autofunction:: core
 
 .. autofunction:: digits
 
-.. autoclass:: primenu
-   :members:
+.. autofunction:: primenu
 
-.. autoclass:: primeomega
-   :members:
+.. autofunction:: primeomega
 
 .. autofunction:: mersenne_prime_exponent
 
 .. autofunction:: is_perfect
-
-.. autofunction:: is_mersenne_prime
 
 .. autofunction:: abundance
 
@@ -105,6 +103,12 @@ Ntheory Functions Reference
 .. autofunction:: is_deficient
 
 .. autofunction:: is_amicable
+
+.. autofunction:: is_carmichael
+
+.. autofunction:: find_carmichael_numbers_in_range
+
+.. autofunction:: find_first_n_carmichaels
 
 .. module:: sympy.ntheory.modular
 
@@ -134,7 +138,11 @@ Ntheory Functions Reference
 
 .. module:: sympy.ntheory.primetest
 
+.. autofunction:: is_fermat_pseudoprime
+
 .. autofunction:: is_euler_pseudoprime
+
+.. autofunction:: is_euler_jacobi_pseudoprime
 
 .. autofunction:: is_square
 
@@ -145,6 +153,10 @@ Ntheory Functions Reference
 .. autofunction:: is_strong_lucas_prp
 
 .. autofunction:: is_extra_strong_lucas_prp
+
+.. autofunction:: proth_test
+
+.. autofunction:: is_mersenne_prime
 
 .. autofunction:: isprime
 
@@ -174,15 +186,20 @@ Ntheory Functions Reference
 
 .. autofunction:: jacobi_symbol
 
+.. autofunction:: mobius
+
 .. autofunction:: discrete_log
+
+.. autofunction:: quadratic_congruence
+
+.. autofunction:: polynomial_congruence
+
+.. autofunction:: binomial_mod
 
 .. automodule:: sympy.ntheory.continued_fraction
    :members:
 
 .. automodule:: sympy.ntheory.digits
-   :members:
-
-.. autoclass:: sympy.ntheory.mobius
    :members:
 
 .. module:: sympy.ntheory.egyptian_fraction
@@ -210,7 +227,7 @@ under around 47s to factorise this.
 .. autofunction:: ecm
 
 Examples
-========
+--------
 
  >>> from sympy.ntheory import ecm
  >>> ecm(7060005655815754299976961394452809, B1=100000, B2=1000000)
@@ -240,7 +257,7 @@ with two 25 digit factors. `qs` is able to factorize this in around 248s.
 .. autofunction:: qs
 
 Examples
-========
+--------
 
  >>> from sympy.ntheory import qs
  >>> qs(5915587277*3267000013, 1000, 10000)

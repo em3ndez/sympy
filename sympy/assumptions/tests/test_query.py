@@ -12,7 +12,7 @@ from sympy.core.add import Add
 from sympy.core.numbers import (I, Integer, Rational, oo, zoo, pi)
 from sympy.core.singleton import S
 from sympy.core.power import Pow
-from sympy.core.symbol import symbols, Symbol
+from sympy.core.symbol import Str, symbols, Symbol
 from sympy.functions.combinatorial.factorials import factorial
 from sympy.functions.elementary.complexes import (Abs, im, re, sign)
 from sympy.functions.elementary.exponential import (exp, log)
@@ -21,7 +21,8 @@ from sympy.functions.elementary.trigonometric import (
     acos, acot, asin, atan, cos, cot, sin, tan)
 from sympy.logic.boolalg import Equivalent, Implies, Xor, And, to_cnf
 from sympy.matrices import Matrix, SparseMatrix
-from sympy.testing.pytest import XFAIL, slow, raises, warns_deprecated_sympy, _both_exp_pow
+from sympy.testing.pytest import (XFAIL, slow, raises, warns_deprecated_sympy,
+    _both_exp_pow)
 import math
 
 
@@ -88,7 +89,7 @@ def test_int_12():
 def test_float_1():
     z = 1.0
     assert ask(Q.commutative(z)) is True
-    assert ask(Q.integer(z)) is False
+    assert ask(Q.integer(z)) is None
     assert ask(Q.rational(z)) is None
     assert ask(Q.real(z)) is True
     assert ask(Q.complex(z)) is True
@@ -96,11 +97,11 @@ def test_float_1():
     assert ask(Q.imaginary(z)) is False
     assert ask(Q.positive(z)) is True
     assert ask(Q.negative(z)) is False
-    assert ask(Q.even(z)) is False
-    assert ask(Q.odd(z)) is False
+    assert ask(Q.even(z)) is None
+    assert ask(Q.odd(z)) is None
     assert ask(Q.finite(z)) is True
-    assert ask(Q.prime(z)) is False
-    assert ask(Q.composite(z)) is False
+    assert ask(Q.prime(z)) is None
+    assert ask(Q.composite(z)) is None
     assert ask(Q.hermitian(z)) is True
     assert ask(Q.antihermitian(z)) is False
 
@@ -419,7 +420,7 @@ def test_pi():
     assert ask(Q.commutative(z)) is True
     assert ask(Q.integer(z)) is False
     assert ask(Q.rational(z)) is False
-    assert ask(Q.algebraic(z)) is False
+    assert ask(Q.algebraic(z)) is None
     assert ask(Q.real(z)) is True
     assert ask(Q.complex(z)) is True
     assert ask(Q.irrational(z)) is True
@@ -606,6 +607,9 @@ def test_I():
 
 def test_bounded():
     x, y, z = symbols('x,y,z')
+    a = x + y
+    x, y = a.args
+    assert ask(Q.finite(a), Q.positive_infinite(y)) is None
     assert ask(Q.finite(x)) is None
     assert ask(Q.finite(x), Q.finite(x)) is True
     assert ask(Q.finite(x), Q.finite(y)) is None
@@ -1101,6 +1105,11 @@ def test_bounded():
     assert ask(Q.finite(sin(x)**2)) is True
     assert ask(Q.finite(cos(x)**2)) is True
     assert ask(Q.finite(cos(x) + sin(x))) is True
+
+
+def test_issue_27441():
+    # https://github.com/sympy/sympy/issues/27441
+    assert ask(Q.composite(y), Q.integer(y) & Q.positive(y) & ~Q.prime(y)) is None
 
 
 @XFAIL
@@ -1786,6 +1795,7 @@ def test_prime():
 
 @_both_exp_pow
 def test_positive():
+    assert ask(Q.positive(cos(I) ** 2 + sin(I) ** 2 - 1)) is None
     assert ask(Q.positive(x), Q.positive(x)) is True
     assert ask(Q.positive(x), Q.negative(x)) is False
     assert ask(Q.positive(x), Q.nonzero(x)) is None
@@ -1902,15 +1912,18 @@ def test_real_pow():
     assert ask(Q.real(x**y), Q.imaginary(x) & Q.odd(y)) is False
     assert ask(Q.real(x**y), Q.imaginary(x) & Q.even(y)) is True
     assert ask(Q.real(x**(y/z)), Q.real(x) & Q.real(y/z) & Q.rational(y/z) & Q.even(z) & Q.positive(x)) is True
-    assert ask(Q.real(x**(y/z)), Q.real(x) & Q.rational(y/z) & Q.even(z) & Q.negative(x)) is False
+    assert ask(Q.real(x**(y/z)), Q.real(x) & Q.rational(y/z) & Q.even(z) & Q.negative(x)) is None
     assert ask(Q.real(x**(y/z)), Q.real(x) & Q.integer(y/z)) is True
     assert ask(Q.real(x**(y/z)), Q.real(x) & Q.real(y/z) & Q.positive(x)) is True
-    assert ask(Q.real(x**(y/z)), Q.real(x) & Q.real(y/z) & Q.negative(x)) is False
+    assert ask(Q.real(x**(y/z)), Q.real(x) & Q.real(y/z) & Q.negative(x)) is None
     assert ask(Q.real((-I)**i), Q.imaginary(i)) is True
     assert ask(Q.real(I**i), Q.imaginary(i)) is True
     assert ask(Q.real(i**i), Q.imaginary(i)) is None  # i might be 2*I
     assert ask(Q.real(x**i), Q.imaginary(i)) is None  # x could be 0
     assert ask(Q.real(x**(I*pi/log(x))), Q.real(x)) is True
+
+    # https://github.com/sympy/sympy/issues/27485
+    assert ask(Q.real(n**p), Q.negative(n) & Q.positive(p)) is None
 
 
 @_both_exp_pow
@@ -1987,7 +2000,7 @@ def test_algebraic():
     assert ask(Q.algebraic(sqrt(1 + I*sqrt(3)))) is True
 
     assert ask(Q.algebraic(1 + I*sqrt(3)**Rational(17, 31))) is True
-    assert ask(Q.algebraic(1 + I*sqrt(3)**(17/pi))) is False
+    assert ask(Q.algebraic(1 + I*sqrt(3)**(17/pi))) is None
 
     for f in [exp, sin, tan, asin, atan, cos]:
         assert ask(Q.algebraic(f(7))) is False
@@ -2008,13 +2021,21 @@ def test_algebraic():
         assert ask(Q.algebraic(h(7, evaluate=False))) is False
         assert ask(Q.algebraic(h(x)), Q.algebraic(x)) is False
 
-    assert ask(Q.algebraic(sqrt(sin(7)))) is False
+    assert ask(Q.algebraic(sqrt(sin(7)))) is None
     assert ask(Q.algebraic(sqrt(y + I*sqrt(7)))) is None
 
     assert ask(Q.algebraic(2.47)) is True
 
     assert ask(Q.algebraic(x), Q.transcendental(x)) is False
     assert ask(Q.transcendental(x), Q.algebraic(x)) is False
+
+    #https://github.com/sympy/sympy/issues/27445
+    assert ask(Q.algebraic(Pow(1, x, evaluate=False)), Q.algebraic(x)) is None
+    assert ask(Q.algebraic(Pow(x, y))) is None
+    assert ask(Q.algebraic(Pow(1, x, evaluate=False))) is None
+    assert ask(Q.algebraic(x**(pi*I))) is None
+    assert ask(Q.algebraic(pi**n),Q.integer(n) & Q.positive(n)) is False
+    assert ask(Q.algebraic(x**y),Q.algebraic(x) & Q.rational(y)) is True
 
 
 def test_global():
@@ -2092,6 +2113,8 @@ def test_key_extensibility():
         with warns_deprecated_sympy():
             assert ask(Q.my_key(x + 1)) is None
     finally:
+        # We have to disable the stacklevel testing here because this raises
+        # the warning twice from two different places
         with warns_deprecated_sympy():
             remove_handler('my_key', MyAskHandler)
         del Q.my_key
@@ -2160,8 +2183,7 @@ def test_known_facts_consistent():
     # test cnf clauses of fact between unary predicates
     cnf = CNF.to_CNF(fact)
     clauses = set()
-    for cl in cnf.clauses:
-        clauses.add(frozenset(Literal(lit.arg.function, lit.is_Not) for lit in sorted(cl, key=str)))
+    clauses.update(frozenset(Literal(lit.arg.function, lit.is_Not) for lit in sorted(cl, key=str)) for cl in cnf.clauses)
     assert get_all_known_facts() == clauses
     # test dictionary of fact between unary predicates
     keys = [pred(x) for pred in get_known_facts_keys()]
@@ -2171,9 +2193,9 @@ def test_known_facts_consistent():
 
 def test_Add_queries():
     assert ask(Q.prime(12345678901234567890 + (cos(1)**2 + sin(1)**2))) is True
-    assert ask(Q.even(Add(S(2), S(2), evaluate=0))) is True
-    assert ask(Q.prime(Add(S(2), S(2), evaluate=0))) is False
-    assert ask(Q.integer(Add(S(2), S(2), evaluate=0))) is True
+    assert ask(Q.even(Add(S(2), S(2), evaluate=False))) is True
+    assert ask(Q.prime(Add(S(2), S(2), evaluate=False))) is False
+    assert ask(Q.integer(Add(S(2), S(2), evaluate=False))) is True
 
 
 def test_positive_assuming():
@@ -2244,7 +2266,7 @@ def test_check_old_assumption():
     assert ask(Q.real(x)) is None
     assert ask(Q.complex(x)) is True
 
-    x = symbols('x', positive=True, finite=True)
+    x = symbols('x', positive=True)
     assert ask(Q.positive(x)) is True
     assert ask(Q.negative(x)) is False
     assert ask(Q.real(x)) is True
@@ -2300,11 +2322,11 @@ def test_check_old_assumption():
 
 
 def test_issue_9636():
-    assert ask(Q.integer(1.0)) is False
-    assert ask(Q.prime(3.0)) is False
-    assert ask(Q.composite(4.0)) is False
-    assert ask(Q.even(2.0)) is False
-    assert ask(Q.odd(3.0)) is False
+    assert ask(Q.integer(1.0)) is None
+    assert ask(Q.prime(3.0)) is None
+    assert ask(Q.composite(4.0)) is None
+    assert ask(Q.even(2.0)) is None
+    assert ask(Q.odd(3.0)) is None
 
 
 def test_autosimp_used_to_fail():
@@ -2322,7 +2344,6 @@ def test_custom_AskHandler():
     class MersenneHandler(AskHandler):
         @staticmethod
         def Integer(expr, assumptions):
-            from sympy import log
             if ask(Q.integer(log(expr + 1, 2))):
                 return True
         @staticmethod
@@ -2347,7 +2368,6 @@ def test_custom_AskHandler():
         Q.mersenne = MersennePredicate()
         @Q.mersenne.register(Integer)
         def _(expr, assumptions):
-            from sympy import log
             if ask(Q.integer(log(expr + 1, 2))):
                 return True
         @Q.mersenne.register(Symbol)
@@ -2395,8 +2415,8 @@ def test_Predicate_handler_is_unique():
     # Handler of defined predicate is unique to the class
     class MyPredicate(Predicate):
         pass
-    mp1 = MyPredicate('mp1')
-    mp2 = MyPredicate('mp2')
+    mp1 = MyPredicate(Str('mp1'))
+    mp2 = MyPredicate(Str('mp2'))
     assert mp1.handler is mp2.handler
 
 
@@ -2405,3 +2425,9 @@ def test_relational():
     assert not ask(Q.eq(x, 0), Q.nonzero(x))
     assert not ask(Q.ne(x, 0), Q.zero(x))
     assert ask(Q.ne(x, 0), Q.nonzero(x))
+
+
+def test_issue_25221():
+    assert ask(Q.transcendental(x), Q.algebraic(x) | Q.positive(y,y)) is None
+    assert ask(Q.transcendental(x), Q.algebraic(x) | (0 > y)) is None
+    assert ask(Q.transcendental(x), Q.algebraic(x) | Q.gt(0,y)) is None

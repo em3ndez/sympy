@@ -15,9 +15,23 @@ Zeta
 
 
 
-from sympy import (Basic, factorial, exp, S, sympify, I, zeta, polylog, log, beta,
-                   hyper, binomial, Piecewise, floor, besseli, sqrt, Sum, Dummy,
-                   Lambda, Eq)
+from sympy.concrete.summations import Sum
+from sympy.core.basic import Basic
+from sympy.core.function import Lambda
+from sympy.core.numbers import I
+from sympy.core.relational import Eq
+from sympy.core.singleton import S
+from sympy.core.symbol import Dummy
+from sympy.core.sympify import sympify
+from sympy.functions.combinatorial.factorials import (binomial, factorial, FallingFactorial)
+from sympy.functions.elementary.exponential import (exp, log)
+from sympy.functions.elementary.integers import floor
+from sympy.functions.elementary.miscellaneous import sqrt
+from sympy.functions.elementary.piecewise import Piecewise
+from sympy.functions.special.bessel import besseli
+from sympy.functions.special.beta_functions import beta
+from sympy.functions.special.hyper import hyper
+from sympy.functions.special.zeta_functions import (polylog, zeta)
 from sympy.stats.drv import SingleDiscreteDistribution, SingleDiscretePSpace
 from sympy.stats.rv import _value_check, is_random
 
@@ -146,8 +160,7 @@ def FlorySchulz(name, a):
     Parameters
     ==========
 
-    a
-        A real number between 0 and 1
+    a : A real number between 0 and 1
 
     Returns
     =======
@@ -220,7 +233,7 @@ def Geometric(name, p):
     Parameters
     ==========
 
-    p: A probability between 0 and 1
+    p : A probability between 0 and 1
 
     Returns
     =======
@@ -251,7 +264,7 @@ def Geometric(name, p):
     ==========
 
     .. [1] https://en.wikipedia.org/wiki/Geometric_distribution
-    .. [2] http://mathworld.wolfram.com/GeometricDistribution.html
+    .. [2] https://mathworld.wolfram.com/GeometricDistribution.html
 
     """
     return rv(name, GeometricDistribution, p)
@@ -306,8 +319,8 @@ def Hermite(name, a1, a2):
     Parameters
     ==========
 
-    a1: A Positive number greater than equal to 0.
-    a2: A Positive number greater than equal to 0.
+    a1 : A Positive number greater than equal to 0.
+    a2 : A Positive number greater than equal to 0.
 
     Returns
     =======
@@ -385,7 +398,7 @@ def Logarithmic(name, p):
     Parameters
     ==========
 
-    p: A value between 0 and 1
+    p : A value between 0 and 1
 
     Returns
     =======
@@ -416,7 +429,7 @@ def Logarithmic(name, p):
     ==========
 
     .. [1] https://en.wikipedia.org/wiki/Logarithmic_distribution
-    .. [2] http://mathworld.wolfram.com/LogarithmicDistribution.html
+    .. [2] https://mathworld.wolfram.com/LogarithmicDistribution.html
 
     """
     return rv(name, LogarithmicDistribution, p)
@@ -467,8 +480,8 @@ def NegativeBinomial(name, r, p):
     Parameters
     ==========
 
-    r: A positive value
-    p: A value between 0 and 1
+    r : A positive value
+    p : A value between 0 and 1
 
     Returns
     =======
@@ -500,7 +513,7 @@ def NegativeBinomial(name, r, p):
     ==========
 
     .. [1] https://en.wikipedia.org/wiki/Negative_binomial_distribution
-    .. [2] http://mathworld.wolfram.com/NegativeBinomialDistribution.html
+    .. [2] https://mathworld.wolfram.com/NegativeBinomialDistribution.html
 
     """
     return rv(name, NegativeBinomialDistribution, r, p)
@@ -527,6 +540,18 @@ class PoissonDistribution(SingleDiscreteDistribution):
     def _moment_generating_function(self, t):
         return exp(self.lamda * (exp(t) - 1))
 
+    def expectation(self, expr, var, evaluate=True, **kwargs):
+        if evaluate:
+            if expr == var:
+                return self.lamda
+            if (
+                isinstance(expr, FallingFactorial)
+                and expr.args[1].is_integer
+                and expr.args[1].is_positive
+                and expr.args[0] == var
+            ):
+                return self.lamda ** expr.args[1]
+        return super().expectation(expr, var, evaluate, **kwargs)
 
 def Poisson(name, lamda):
     r"""
@@ -543,7 +568,7 @@ def Poisson(name, lamda):
     Parameters
     ==========
 
-    lamda: Positive number, a rate
+    lamda : Positive number, a rate
 
     Returns
     =======
@@ -574,7 +599,7 @@ def Poisson(name, lamda):
     ==========
 
     .. [1] https://en.wikipedia.org/wiki/Poisson_distribution
-    .. [2] http://mathworld.wolfram.com/PoissonDistribution.html
+    .. [2] https://mathworld.wolfram.com/PoissonDistribution.html
 
     """
     return rv(name, PoissonDistribution, lamda)
@@ -631,8 +656,8 @@ def Skellam(name, mu1, mu2):
     Parameters
     ==========
 
-    mu1: A non-negative value
-    mu2: A non-negative value
+    mu1 : A non-negative value
+    mu2 : A non-negative value
 
     Returns
     =======
@@ -713,7 +738,7 @@ def YuleSimon(name, rho):
     Parameters
     ==========
 
-    rho: A positive value
+    rho : A positive value
 
     Returns
     =======
@@ -786,7 +811,7 @@ def Zeta(name, s):
     Parameters
     ==========
 
-    s: A value greater than 1
+    s : A value greater than 1
 
     Returns
     =======

@@ -6,7 +6,7 @@ and supports functions to generate the contents in
 ``sympy.assumptions.ask_generated`` file.
 """
 
-from sympy.assumptions import Q
+from sympy.assumptions.ask import Q
 from sympy.assumptions.assume import AppliedPredicate
 from sympy.core.cache import cacheit
 from sympy.core.symbol import Symbol
@@ -39,6 +39,33 @@ def get_composite_predicates():
 def get_known_facts(x=None):
     """
     Facts between unary predicates.
+
+    Parameters
+    ==========
+
+    x : Symbol, optional
+        Placeholder symbol for unary facts. Default is ``Symbol('x')``.
+
+    Returns
+    =======
+
+    fact : Known facts in conjugated normal form.
+
+    """
+    if x is None:
+        x = Symbol('x')
+
+    fact = And(
+        get_number_facts(x),
+        get_matrix_facts(x)
+    )
+    return fact
+
+
+@cacheit
+def get_number_facts(x = None):
+    """
+    Facts between unary number predicates.
 
     Parameters
     ==========
@@ -90,7 +117,31 @@ def get_known_facts(x=None):
 
         # commutativity
         Implies(Q.finite(x) | Q.infinite(x), Q.commutative(x)),
+    )
+    return fact
 
+
+@cacheit
+def get_matrix_facts(x = None):
+    """
+    Facts between unary matrix predicates.
+
+    Parameters
+    ==========
+
+    x : Symbol, optional
+        Placeholder symbol for unary facts. Default is ``Symbol('x')``.
+
+    Returns
+    =======
+
+    fact : Known facts in conjugated normal form.
+
+    """
+    if x is None:
+        x = Symbol('x')
+
+    fact = And(
         # matrices
         Implies(Q.orthogonal(x), Q.positive_definite(x)),
         Implies(Q.orthogonal(x), Q.unitary(x)),
@@ -119,6 +170,7 @@ def get_known_facts(x=None):
     return fact
 
 
+
 def generate_known_facts_dict(keys, fact):
     """
     Computes and returns a dictionary which contains the relations between
@@ -141,9 +193,8 @@ def generate_known_facts_dict(keys, fact):
     Examples
     ========
 
-    >>> from sympy import Q
+    >>> from sympy import Q, And, Implies
     >>> from sympy.assumptions.facts import generate_known_facts_dict
-    >>> from sympy.logic.boolalg import And, Implies
     >>> from sympy.abc import x
     >>> keys = [Q.even(x), Q.odd(x), Q.zero(x)]
     >>> fact = And(Implies(Q.even(x), ~Q.odd(x)),
@@ -179,10 +230,8 @@ def get_known_facts_keys():
     ``generate_known_facts_dict``.
 
     """
-    exclude = set()
-    for pred in [Q.eq, Q.ne, Q.gt, Q.lt, Q.ge, Q.le]:
-        # exclude polyadic predicates
-        exclude.add(pred)
+    # exclude polyadic predicates
+    exclude = {Q.eq, Q.ne, Q.gt, Q.lt, Q.ge, Q.le}
 
     result = []
     for attr in Q.__class__.__dict__:

@@ -1,18 +1,26 @@
 """ Tools for doing common subexpression elimination.
 """
-from sympy.core import Basic, Mul, Add, Pow, sympify, Symbol
-from sympy.core.compatibility import iterable
+from collections import defaultdict
+
+from sympy.core import Basic, Mul, Add, Pow, sympify
 from sympy.core.containers import Tuple, OrderedSet
 from sympy.core.exprtools import factor_terms
-from sympy.core.function import _coeff_isneg
 from sympy.core.singleton import S
+from sympy.core.sorting import ordered
+from sympy.core.symbol import symbols, Symbol
+from sympy.matrices import (MatrixBase, Matrix, ImmutableMatrix,
+                            SparseMatrix, ImmutableSparseMatrix)
+from sympy.matrices.expressions import (MatrixExpr, MatrixSymbol, MatMul,
+                                        MatAdd, MatPow, Inverse)
+from sympy.matrices.expressions.matexpr import MatrixElement
+from sympy.polys.rootoftools import RootOf
 from sympy.utilities.iterables import numbered_symbols, sift, \
-        topological_sort, ordered
+        topological_sort, iterable
 
 from . import cse_opts
 
 # (preprocessor, postprocessor) pairs which are commonly useful. They should
-# each take a sympy expression and return a possibly transformed expression.
+# each take a SymPy expression and return a possibly transformed expression.
 # When used in the function ``cse()``, the target expressions will be transformed
 # by each of the preprocessor functions in order. After the common
 # subexpressions are eliminated, each resulting expression will have the
@@ -124,8 +132,6 @@ def cse_release_variables(r, e):
     if not r:
         return r, e
 
-    from sympy import symbols
-
     s, p = zip(*r)
     esyms = symbols('_:%d' % len(e))
     syms = list(esyms)
@@ -135,8 +141,8 @@ def cse_release_variables(r, e):
     # sort e so those with most sub-expressions appear first
     e = [(e[i], syms[i]) for i in range(len(e))]
     e, syms = zip(*sorted(e,
-        key=lambda x: -sum([p[s.index(i)].count_ops()
-        for i in x[0].free_symbols & in_use])))
+        key=lambda x: -sum(p[s.index(i)].count_ops()
+        for i in x[0].free_symbols & in_use)))
     syms = list(syms)
     p += e
     rv = []
@@ -166,7 +172,7 @@ def preprocess_for_cse(expr, optimizations):
     Parameters
     ==========
 
-    expr : sympy expression
+    expr : SymPy expression
         The target expression to optimize.
     optimizations : list of (callable, callable) pairs
         The (preprocessor, postprocessor) pairs.
@@ -174,7 +180,7 @@ def preprocess_for_cse(expr, optimizations):
     Returns
     =======
 
-    expr : sympy expression
+    expr : SymPy expression
         The transformed expression.
     """
     for pre, post in optimizations:
@@ -190,7 +196,7 @@ def postprocess_for_cse(expr, optimizations):
     Parameters
     ==========
 
-    expr : sympy expression
+    expr : SymPy expression
         The target expression to transform.
     optimizations : list of (callable, callable) pairs, optional
         The (preprocessor, postprocessor) pairs.  The postprocessors will be
@@ -200,7 +206,7 @@ def postprocess_for_cse(expr, optimizations):
     Returns
     =======
 
-    expr : sympy expression
+    expr : SymPy expression
         The transformed expression.
     """
     for pre, post in reversed(optimizations):
@@ -267,7 +273,6 @@ class FuncArgTracker:
         ``argset``. Entries have at least 2 items in common.  All keys have
         value at least ``min_func_i``.
         """
-        from collections import defaultdict
         count_map = defaultdict(lambda: 0)
         if not argset:
             return count_map
@@ -458,7 +463,7 @@ def opt_cse(exprs, order='canonical'):
     Parameters
     ==========
 
-    exprs : list of sympy expressions
+    exprs : list of SymPy expressions
         The expressions to optimize.
     order : string, 'none' or 'canonical'
         The order by which Mul and Add arguments are processed. For large
@@ -480,13 +485,13 @@ def opt_cse(exprs, order='canonical'):
     >>> print((k, v.as_unevaluated_basic()))
     (x**(-2), 1/(x**2))
     """
-    from sympy.matrices.expressions import MatAdd, MatMul, MatPow
-    opt_subs = dict()
+    opt_subs = {}
 
     adds = OrderedSet()
     muls = OrderedSet()
 
     seen_subexp = set()
+    collapsible_subexp = set()
 
     def _find_opts(expr):
 
@@ -506,27 +511,50 @@ def opt_cse(exprs, order='canonical'):
 
         list(map(_find_opts, expr.args))
 
-        if _coeff_isneg(expr):
-            neg_expr = -expr
+        if not isinstance(expr, MatrixExpr) and expr.could_extract_minus_sign():
+            # XXX -expr does not always work rigorously for some expressions
+            # containing UnevaluatedExpr.
+            # https://github.com/sympy/sympy/issues/24818
+            if isinstance(expr, Add):
+                neg_expr = Add(*(-i for i in expr.args))
+            else:
+                neg_expr = -expr
+
             if not neg_expr.is_Atom:
                 opt_subs[expr] = Unevaluated(Mul, (S.NegativeOne, neg_expr))
                 seen_subexp.add(neg_expr)
                 expr = neg_expr
 
         if isinstance(expr, (Mul, MatMul)):
-            muls.add(expr)
+            if len(expr.args) == 1:
+                collapsible_subexp.add(expr)
+            else:
+                muls.add(expr)
 
         elif isinstance(expr, (Add, MatAdd)):
-            adds.add(expr)
+            if len(expr.args) == 1:
+                collapsible_subexp.add(expr)
+            else:
+                adds.add(expr)
+
+        elif isinstance(expr, Inverse):
+            # Do not want to treat `Inverse` as a `MatPow`
+            pass
 
         elif isinstance(expr, (Pow, MatPow)):
             base, exp = expr.base, expr.exp
-            if _coeff_isneg(exp):
+            if exp.could_extract_minus_sign():
                 opt_subs[expr] = Unevaluated(Pow, (Pow(base, -exp), -1))
 
     for e in exprs:
         if isinstance(e, (Basic, Unevaluated)):
             _find_opts(e)
+
+    # Handle collapsing of multinary operations with single arguments
+    edges = [(s, s.args[0]) for s in collapsible_subexp
+             if s.args[0] in collapsible_subexp]
+    for e in reversed(topological_sort((collapsible_subexp, edges))):
+        opt_subs[e] = opt_subs.get(e.args[0], e.args[0])
 
     # split muls into commutative
     commutative_muls = OrderedSet()
@@ -538,7 +566,10 @@ def opt_cse(exprs, order='canonical'):
                 if c_mul == 1:
                     new_obj = m.func(*nc)
                 else:
-                    new_obj = m.func(c_mul, m.func(*nc), evaluate=False)
+                    if isinstance(m, MatMul):
+                        new_obj = m.func(c_mul, *nc, evaluate=False)
+                    else:
+                        new_obj = m.func(c_mul, m.func(*nc), evaluate=False)
                 opt_subs[m] = new_obj
             if len(c) > 1:
                 commutative_muls.add(c_mul)
@@ -555,7 +586,7 @@ def tree_cse(exprs, symbols, opt_subs=None, order='canonical', ignore=()):
     Parameters
     ==========
 
-    exprs : list of sympy expressions
+    exprs : list of SymPy expressions
         The expressions to reduce.
     symbols : infinite iterator yielding unique Symbols
         The symbols used to label the common subexpressions which are pulled
@@ -568,11 +599,8 @@ def tree_cse(exprs, symbols, opt_subs=None, order='canonical', ignore=()):
     ignore : iterable of Symbols
         Substitutions containing any Symbol from ``ignore`` will be ignored.
     """
-    from sympy.matrices.expressions import MatrixExpr, MatrixSymbol, MatMul, MatAdd
-    from sympy.polys.rootoftools import RootOf
-
     if opt_subs is None:
-        opt_subs = dict()
+        opt_subs = {}
 
     ## Find repeated sub-expressions
 
@@ -588,9 +616,12 @@ def tree_cse(exprs, symbols, opt_subs=None, order='canonical', ignore=()):
         if isinstance(expr, RootOf):
             return
 
-        if isinstance(expr, Basic) and (expr.is_Atom or expr.is_Order):
+        if isinstance(expr, Basic) and (
+                expr.is_Atom or
+                expr.is_Order or
+                isinstance(expr, (MatrixSymbol, MatrixElement))):
             if expr.is_Symbol:
-                excluded_symbols.add(expr)
+                excluded_symbols.add(expr.name)
             return
 
         if iterable(expr):
@@ -621,11 +652,11 @@ def tree_cse(exprs, symbols, opt_subs=None, order='canonical', ignore=()):
     ## Rebuild tree
 
     # Remove symbols from the generator that conflict with names in the expressions.
-    symbols = (symbol for symbol in symbols if symbol not in excluded_symbols)
+    symbols = (_ for _ in symbols if _.name not in excluded_symbols)
 
     replacements = []
 
-    subs = dict()
+    subs = {}
 
     def _rebuild(expr):
         if not isinstance(expr, (Basic, Unevaluated)):
@@ -635,7 +666,7 @@ def tree_cse(exprs, symbols, opt_subs=None, order='canonical', ignore=()):
             return expr
 
         if iterable(expr):
-            new_args = [_rebuild(arg) for arg in expr]
+            new_args = [_rebuild(arg) for arg in expr.args]
             return expr.func(*new_args)
 
         if expr in subs:
@@ -701,7 +732,7 @@ def cse(exprs, symbols=None, optimizations=None, postprocess=None,
     Parameters
     ==========
 
-    exprs : list of sympy expressions, or a single sympy expression
+    exprs : list of SymPy expressions, or a single SymPy expression
         The expressions to reduce.
     symbols : infinite iterator yielding unique Symbols
         The symbols used to label the common subexpressions which are pulled
@@ -736,7 +767,7 @@ def cse(exprs, symbols=None, optimizations=None, postprocess=None,
         All of the common subexpressions that were replaced. Subexpressions
         earlier in this list might show up in subexpressions later in this
         list.
-    reduced_exprs : list of sympy expressions
+    reduced_exprs : list of SymPy expressions
         The reduced expressions with all of the replacements above.
 
     Examples
@@ -747,10 +778,6 @@ def cse(exprs, symbols=None, optimizations=None, postprocess=None,
     >>> cse(((w + x + y + z)*(w + y + z))/(w + x)**3)
     ([(x0, y + z), (x1, w + x)], [(w + x0)*(x0 + x1)/x1**3])
 
-    Note that currently, y + z will not get substituted if -y - z is used.
-
-    >>> cse(((w + x + y + z)*(w - y - z))/(w + x)**3)
-     ([(x0, w + x)], [(w - y - z)*(x0 + y + z)/x0**3])
 
     List of expressions with recursive substitutions:
 
@@ -778,9 +805,6 @@ def cse(exprs, symbols=None, optimizations=None, postprocess=None,
     >>> cse(x, list=False)
     ([], x)
     """
-    from sympy.matrices import (MatrixBase, Matrix, ImmutableMatrix,
-                                SparseMatrix, ImmutableSparseMatrix)
-
     if not list:
         return _cse_homogeneous(exprs,
             symbols=symbols, optimizations=optimizations,
@@ -829,9 +853,8 @@ def cse(exprs, symbols=None, optimizations=None, postprocess=None,
 
     # Postprocess the expressions to return the expressions to canonical form.
     exprs = copy
-    for i, (sym, subtree) in enumerate(replacements):
-        subtree = postprocess_for_cse(subtree, optimizations)
-        replacements[i] = (sym, subtree)
+    replacements = [(sym, postprocess_for_cse(subtree, optimizations))
+                    for sym, subtree in replacements]
     reduced_exprs = [postprocess_for_cse(e, optimizations)
                      for e in reduced_exprs]
 
@@ -874,7 +897,7 @@ def _cse_homogeneous(exprs, **kwargs):
         All of the common subexpressions that were replaced. Subexpressions
         earlier in this list might show up in subexpressions later in this
         list.
-    reduced_exprs : list of sympy expressions
+    reduced_exprs : list of SymPy expressions
         The reduced expressions with all of the replacements above.
 
     Examples
@@ -902,7 +925,6 @@ def _cse_homogeneous(exprs, **kwargs):
     <class 'set'>
     """
     if isinstance(exprs, str):
-        from sympy import sympify
         replacements, reduced_exprs = _cse_homogeneous(
             sympify(exprs), **kwargs)
         return replacements, repr(reduced_exprs)

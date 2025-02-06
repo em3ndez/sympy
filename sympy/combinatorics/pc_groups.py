@@ -1,4 +1,4 @@
-from sympy import isprime
+from sympy.ntheory.primetest import isprime
 from sympy.combinatorics.perm_groups import PermutationGroup
 from sympy.printing.defaults import DefaultPrinting
 from sympy.combinatorics.free_groups import free_group
@@ -103,7 +103,7 @@ class Collector(DefaultPrinting):
         ========
 
         >>> from sympy.combinatorics.named_groups import SymmetricGroup
-        >>> from sympy.combinatorics.free_groups import free_group
+        >>> from sympy.combinatorics import free_group
         >>> G = SymmetricGroup(4)
         >>> PcGroup = G.polycyclic_group()
         >>> collector = PcGroup.collector
@@ -196,13 +196,13 @@ class Collector(DefaultPrinting):
 
         (i, j)
             A tuple containing starting and ending index of ``w``
-            in the given word.
+            in the given word. If not exists, (-1,-1) is returned.
 
         Examples
         ========
 
         >>> from sympy.combinatorics.named_groups import SymmetricGroup
-        >>> from sympy.combinatorics.free_groups import free_group
+        >>> from sympy.combinatorics import free_group
         >>> G = SymmetricGroup(4)
         >>> PcGroup = G.polycyclic_group()
         >>> collector = PcGroup.collector
@@ -214,6 +214,9 @@ class Collector(DefaultPrinting):
         >>> w = x1**7
         >>> collector.subword_index(word, w)
         (2, 9)
+        >>> w = x1**8
+        >>> collector.subword_index(word, w)
+        (-1, -1)
 
         """
         low = -1
@@ -223,8 +226,6 @@ class Collector(DefaultPrinting):
                 low = i
                 high = i+len(w)
                 break
-        if low == high == -1:
-            return -1, -1
         return low, high
 
     def map_relation(self, w):
@@ -243,7 +244,7 @@ class Collector(DefaultPrinting):
         ========
 
         >>> from sympy.combinatorics.named_groups import SymmetricGroup
-        >>> from sympy.combinatorics.free_groups import free_group
+        >>> from sympy.combinatorics import free_group
         >>> G = SymmetricGroup(3)
         >>> PcGroup = G.polycyclic_group()
         >>> collector = PcGroup.collector
@@ -298,7 +299,7 @@ class Collector(DefaultPrinting):
 
         >>> from sympy.combinatorics.named_groups import SymmetricGroup
         >>> from sympy.combinatorics.perm_groups import PermutationGroup
-        >>> from sympy.combinatorics.free_groups import free_group
+        >>> from sympy.combinatorics import free_group
         >>> G = SymmetricGroup(4)
         >>> PcGroup = G.polycyclic_group()
         >>> collector = PcGroup.collector
@@ -319,8 +320,11 @@ class Collector(DefaultPrinting):
         ...     sym = w[0]
         ...     perm = free_to_perm[sym]
         ...     G2 = PermutationGroup([perm] + G2.generators)
-        >>> G1 == G2
-        True
+
+        The two are not identical, but they are equivalent:
+
+        >>> G1.equals(G2), G1 == G2
+        (True, False)
 
         See Also
         ========
@@ -390,11 +394,11 @@ class Collector(DefaultPrinting):
         There are two types of relations used in polycyclic
         presentation.
 
-        * ``Power relations`` : Power relators are of the form `x_i^{re_i}`,
+        * Power relations : Power relators are of the form `x_i^{re_i}`,
           where `i \in \{0, \ldots, \mathrm{len(pcgs)}\}`, ``x`` represents polycyclic
           generator and ``re`` is the corresponding relative order.
 
-        * ``Conjugate relations`` : Conjugate relators are of the form `x_j^-1x_ix_j`,
+        * Conjugate relations : Conjugate relators are of the form `x_j^-1x_ix_j`,
           where `j < i \in \{0, \ldots, \mathrm{len(pcgs)}\}`.
 
         Returns
@@ -683,7 +687,7 @@ class Collector(DefaultPrinting):
                 for gen in z:
                     if gen != 1:
                         G.append(h**-1*gen**-1*h*gen)
-                z[d-1] = h;
+                z[d-1] = h
         z = [gen for gen in z if gen != 1]
         return z
 

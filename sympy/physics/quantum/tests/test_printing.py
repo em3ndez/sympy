@@ -3,7 +3,8 @@
 TODO:
 * Address Issue 2251, printing of spin states
 """
-from typing import Dict, Any
+from __future__ import annotations
+from typing import Any
 
 from sympy.physics.quantum.anticommutator import AntiCommutator
 from sympy.physics.quantum.cg import CG, Wigner3j, Wigner6j, Wigner9j
@@ -21,7 +22,13 @@ from sympy.physics.quantum.state import Bra, Ket, TimeDepBra, TimeDepKet
 from sympy.physics.quantum.tensorproduct import TensorProduct
 from sympy.physics.quantum.sho1d import RaisingOp
 
-from sympy import Derivative, Function, Interval, Matrix, Pow, S, symbols, Symbol, oo
+from sympy.core.function import (Derivative, Function)
+from sympy.core.numbers import oo
+from sympy.core.power import Pow
+from sympy.core.singleton import S
+from sympy.core.symbol import (Symbol, symbols)
+from sympy.matrices.dense import Matrix
+from sympy.sets.sets import Interval
 from sympy.testing.pytest import XFAIL
 
 # Imports used in srepr strings
@@ -34,7 +41,7 @@ from sympy.printing.latex import latex
 MutableDenseMatrix = Matrix
 
 
-ENV = {}  # type: Dict[str, Any]
+ENV: dict[str, Any] = {}
 exec('from sympy import *', ENV)
 exec('from sympy.physics.quantum import *', ENV)
 exec('from sympy.physics.quantum.cg import *', ENV)
@@ -114,7 +121,8 @@ C       \n\
 """
     assert pretty(cg) == ascii_str
     assert upretty(cg) == ucode_str
-    assert latex(cg) == r'C^{5,6}_{1,2,3,4}'
+    assert latex(cg) == 'C^{5,6}_{1,2,3,4}'
+    assert latex(cg ** 2) == R'\left(C^{5,6}_{1,2,3,4}\right)^{2}'
     sT(cg, "CG(Integer(1), Integer(2), Integer(3), Integer(4), Integer(5), Integer(6))")
     assert str(wigner3j) == 'Wigner3j(1, 2, 3, 4, 5, 6)'
     ascii_str = \
@@ -212,7 +220,7 @@ def test_constants():
 
 
 def test_dagger():
-    x = symbols('x')
+    x = symbols('x', commutative=False)
     expr = Dagger(x)
     assert str(expr) == 'Dagger(x)'
     ascii_str = \
@@ -228,7 +236,7 @@ x \
     assert pretty(expr) == ascii_str
     assert upretty(expr) == ucode_str
     assert latex(expr) == r'x^{\dagger}'
-    sT(expr, "Dagger(Symbol('x'))")
+    sT(expr, "Dagger(Symbol('x', commutative=False))")
 
 
 @XFAIL
@@ -295,7 +303,7 @@ CNOT   \n\
 """
     assert pretty(g3) == ascii_str
     assert upretty(g3) == ucode_str
-    assert latex(g3) == r'CNOT_{1,0}'
+    assert latex(g3) == r'\text{CNOT}_{1,0}'
     sT(g3, "CNotGate(Integer(1),Integer(0))")
     ascii_str = \
 """\
@@ -316,7 +324,7 @@ U((0,),Matrix([\n\
     assert pretty(g4) == ascii_str
     assert upretty(g4) == ucode_str
     assert latex(g4) == r'U_{0}'
-    sT(g4, "UGate(Tuple(Integer(0)),MutableDenseMatrix([[Symbol('a'), Symbol('b')], [Symbol('c'), Symbol('d')]]))")
+    sT(g4, "UGate(Tuple(Integer(0)),ImmutableDenseMatrix([[Symbol('a'), Symbol('b')], [Symbol('c'), Symbol('d')]]))")
 
 
 def test_hilbert():

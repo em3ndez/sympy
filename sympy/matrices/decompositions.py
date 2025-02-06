@@ -1,10 +1,11 @@
 import copy
 
+from sympy.core import S
 from sympy.core.function import expand_mul
 from sympy.functions.elementary.miscellaneous import Min, sqrt
 from sympy.functions.elementary.complexes import sign
 
-from .common import NonSquareMatrixError, NonPositiveDefiniteMatrixError
+from .exceptions import NonSquareMatrixError, NonPositiveDefiniteMatrixError
 from .utilities import _get_intermediate_simp, _iszero
 from .determinant import _find_reasonable_pivot_naive
 
@@ -36,7 +37,7 @@ def _rank_decomposition(M, iszerofunc=_iszero, simplify=False):
     Examples
     ========
 
-    >>> from sympy.matrices import Matrix
+    >>> from sympy import Matrix
     >>> A = Matrix([
     ...     [1, 3, 1, 4],
     ...     [2, 7, 3, 9],
@@ -67,14 +68,14 @@ def _rank_decomposition(M, iszerofunc=_iszero, simplify=False):
     .. math::
         E_n E_{n-1} ... E_1 A = F
 
-    where `E_n, E_{n-1}, ... , E_1` are the elimination matrices or
+    where `E_n, E_{n-1}, \dots, E_1` are the elimination matrices or
     permutation matrices equivalent to each row-reduction step.
 
     The inverse of the same product of elimination matrices gives
     `C`:
 
     .. math::
-        C = (E_n E_{n-1} ... E_1)^{-1}
+        C = \left(E_n E_{n-1} \dots E_1\right)^{-1}
 
     It is not necessary, however, to actually compute the inverse:
     the columns of `C` are those from the original matrix with the
@@ -92,7 +93,7 @@ def _rank_decomposition(M, iszerofunc=_iszero, simplify=False):
     See Also
     ========
 
-    sympy.matrices.matrices.MatrixReductions.rref
+    sympy.matrices.matrixbase.MatrixBase.rref
     """
 
     F, pivot_cols = M.rref(simplify=simplify, iszerofunc=iszerofunc,
@@ -112,7 +113,7 @@ def _liupc(M):
     Examples
     ========
 
-    >>> from sympy.matrices import SparseMatrix
+    >>> from sympy import SparseMatrix
     >>> S = SparseMatrix([
     ... [1, 0, 3, 2],
     ... [0, 0, 1, 0],
@@ -124,9 +125,9 @@ def _liupc(M):
     References
     ==========
 
-    Symbolic Sparse Cholesky Factorization using Elimination Trees,
-    Jeroen Van Grondelle (1999)
-    http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.39.7582
+    .. [1] Symbolic Sparse Cholesky Factorization using Elimination Trees,
+           Jeroen Van Grondelle (1999)
+           https://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.39.7582
     """
     # Algorithm 2.4, p 17 of reference
 
@@ -160,7 +161,7 @@ def _row_structure_symbolic_cholesky(M):
     Examples
     ========
 
-    >>> from sympy.matrices import SparseMatrix
+    >>> from sympy import SparseMatrix
     >>> S = SparseMatrix([
     ... [1, 0, 3, 2],
     ... [0, 0, 1, 0],
@@ -172,9 +173,9 @@ def _row_structure_symbolic_cholesky(M):
     References
     ==========
 
-    Symbolic Sparse Cholesky Factorization using Elimination Trees,
-    Jeroen Van Grondelle (1999)
-    http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.39.7582
+    .. [1] Symbolic Sparse Cholesky Factorization using Elimination Trees,
+           Jeroen Van Grondelle (1999)
+           https://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.39.7582
     """
 
     R, parent = M.liupc()
@@ -187,7 +188,7 @@ def _row_structure_symbolic_cholesky(M):
                 Lrow[k].append(j)
                 j = parent[j]
 
-        Lrow[k] = list(sorted(set(Lrow[k])))
+        Lrow[k] = sorted(set(Lrow[k]))
 
     return Lrow
 
@@ -203,7 +204,7 @@ def _cholesky(M, hermitian=True):
     Examples
     ========
 
-    >>> from sympy.matrices import Matrix
+    >>> from sympy import Matrix
     >>> A = Matrix(((25, 15, -5), (15, 18, 0), (-5, 0, 11)))
     >>> A.cholesky()
     Matrix([
@@ -245,7 +246,7 @@ def _cholesky(M, hermitian=True):
     ========
 
     sympy.matrices.dense.DenseMatrix.LDLdecomposition
-    sympy.matrices.matrices.MatrixBase.LUdecomposition
+    sympy.matrices.matrixbase.MatrixBase.LUdecomposition
     QRdecomposition
     """
 
@@ -297,7 +298,7 @@ def _cholesky_sparse(M, hermitian=True):
     Examples
     ========
 
-    >>> from sympy.matrices import SparseMatrix
+    >>> from sympy import SparseMatrix
     >>> A = SparseMatrix(((25,15,-5),(15,18,0),(-5,0,11)))
     >>> A.cholesky()
     Matrix([
@@ -336,7 +337,7 @@ def _cholesky_sparse(M, hermitian=True):
     ========
 
     sympy.matrices.sparse.SparseMatrix.LDLdecomposition
-    sympy.matrices.matrices.MatrixBase.LUdecomposition
+    sympy.matrices.matrixbase.MatrixBase.LUdecomposition
     QRdecomposition
     """
 
@@ -411,7 +412,7 @@ def _LDLdecomposition(M, hermitian=True):
     Examples
     ========
 
-    >>> from sympy.matrices import Matrix, eye
+    >>> from sympy import Matrix, eye
     >>> A = Matrix(((25, 15, -5), (15, 18, 0), (-5, 0, 11)))
     >>> L, D = A.LDLdecomposition()
     >>> L
@@ -447,7 +448,7 @@ def _LDLdecomposition(M, hermitian=True):
     ========
 
     sympy.matrices.dense.DenseMatrix.cholesky
-    sympy.matrices.matrices.MatrixBase.LUdecomposition
+    sympy.matrices.matrixbase.MatrixBase.LUdecomposition
     QRdecomposition
     """
 
@@ -498,7 +499,7 @@ def _LDLdecomposition_sparse(M, hermitian=True):
     Examples
     ========
 
-    >>> from sympy.matrices import SparseMatrix
+    >>> from sympy import SparseMatrix
     >>> A = SparseMatrix(((25, 15, -5), (15, 18, 0), (-5, 0, 11)))
     >>> L, D = A.LDLdecomposition()
     >>> L
@@ -596,7 +597,7 @@ def _LUdecomposition(M, iszerofunc=_iszero, simpfunc=None, rankcheck=False):
         A function which determines if a given expression is zero.
 
         The function should be a callable that takes a single
-        sympy expression and returns a 3-valued boolean value
+        SymPy expression and returns a 3-valued boolean value
         ``True``, ``False``, or ``None``.
 
         It is internally used by the pivot searching algorithm.
@@ -607,8 +608,8 @@ def _LUdecomposition(M, iszerofunc=_iszero, simpfunc=None, rankcheck=False):
         A function that simplifies the input.
 
         If this is specified as a function, this function should be
-        a callable that takes a single sympy expression and returns
-        an another sympy expression that is algebraically
+        a callable that takes a single SymPy expression and returns
+        an another SymPy expression that is algebraically
         equivalent.
 
         If ``None``, it indicates that the pivot search algorithm
@@ -691,7 +692,7 @@ def _LUdecomposition_Simple(M, iszerofunc=_iszero, simpfunc=None,
         A function which determines if a given expression is zero.
 
         The function should be a callable that takes a single
-        sympy expression and returns a 3-valued boolean value
+        SymPy expression and returns a 3-valued boolean value
         ``True``, ``False``, or ``None``.
 
         It is internally used by the pivot searching algorithm.
@@ -702,8 +703,8 @@ def _LUdecomposition_Simple(M, iszerofunc=_iszero, simpfunc=None,
         A function that simplifies the input.
 
         If this is specified as a function, this function should be
-        a callable that takes a single sympy expression and returns
-        an another sympy expression that is algebraically
+        a callable that takes a single SymPy expression and returns
+        an another SymPy expression that is algebraically
         equivalent.
 
         If ``None``, it indicates that the pivot search algorithm
@@ -720,7 +721,7 @@ def _LUdecomposition_Simple(M, iszerofunc=_iszero, simpfunc=None,
         If the original matrix is a $m, n$ matrix:
 
         *lu* is a $m, n$ matrix, which contains result of the
-        decomposition in a compresed form. See the notes section
+        decomposition in a compressed form. See the notes section
         to see how the matrix is compressed.
 
         *row_swaps* is a $m$-element list where each element is a
@@ -928,7 +929,7 @@ def _LUdecomposition_Simple(M, iszerofunc=_iszero, simpfunc=None,
     See Also
     ========
 
-    sympy.matrices.matrices.MatrixBase.LUdecomposition
+    sympy.matrices.matrixbase.MatrixBase.LUdecomposition
     LUdecompositionFF
     LUsolve
     """
@@ -937,7 +938,7 @@ def _LUdecomposition_Simple(M, iszerofunc=_iszero, simpfunc=None,
         # https://github.com/sympy/sympy/issues/9796
         pass
 
-    if M.rows == 0 or M.cols == 0:
+    if S.Zero in M.shape:
         # Define LU decomposition of a matrix with no entries as a matrix
         # of the same dimensions with all zero entries.
         return M.zeros(M.rows, M.cols), []
@@ -1073,7 +1074,7 @@ def _LUdecompositionFF(M):
     See Also
     ========
 
-    sympy.matrices.matrices.MatrixBase.LUdecomposition
+    sympy.matrices.matrixbase.MatrixBase.LUdecomposition
     LUdecomposition_Simple
     LUsolve
 
@@ -1129,7 +1130,7 @@ def _singular_value_decomposition(A):
     Explanation
     ===========
 
-    A Singular Value decomposition is a decomposition in the form $A = U \Sigma V$
+    A Singular Value decomposition is a decomposition in the form $A = U \Sigma V^H$
     where
 
     - $U, V$ are column orthogonal matrix.
@@ -1144,15 +1145,15 @@ def _singular_value_decomposition(A):
     For matrices which are not square or are rank-deficient, it is
     sufficient to return a column orthogonal matrix because augmenting
     them may introduce redundant computations.
-    In condensed Singular Value Decomposition we only return column orthognal
+    In condensed Singular Value Decomposition we only return column orthogonal
     matrices because of this reason
 
     If you want to augment the results to return a full orthogonal
     decomposition, you should use the following procedures.
 
-    - Augment the $U , V$ matrices with columns that are orthogonal to every
+    - Augment the $U, V$ matrices with columns that are orthogonal to every
       other columns and make it square.
-    - Augument the $\Sigma$ matrix with zero rows to make it have the same
+    - Augment the $\Sigma$ matrix with zero rows to make it have the same
       shape as the original matrix.
 
     The procedure will be illustrated in the examples section.
@@ -1312,11 +1313,7 @@ def _singular_value_decomposition(A):
 
         Singular_vals = [sqrt(S[i, i]) for i in range(S.rows) if i in ranked]
 
-        S = S.zeros(len(Singular_vals))
-
-        for i in range(len(Singular_vals)):
-            S[i, i] = Singular_vals[i]
-
+        S = S.diag(*Singular_vals)
         V, _ = V.QRdecomposition()
         U = A * V * S.inv()
     else:
@@ -1330,11 +1327,7 @@ def _singular_value_decomposition(A):
         U = U[:, ranked]
         Singular_vals = [sqrt(S[i, i]) for i in range(S.rows) if i in ranked]
 
-        S = S.zeros(len(Singular_vals))
-
-        for i in range(len(Singular_vals)):
-            S[i, i] = Singular_vals[i]
-
+        S = S.diag(*Singular_vals)
         U, _ = U.QRdecomposition()
         V = AH * U * S.inv()
 
@@ -1347,7 +1340,7 @@ def _QRdecomposition_optional(M, normalize=True):
     dps = _get_intermediate_simp(expand_mul, expand_mul)
 
     A = M.as_mutable()
-    ranked = list()
+    ranked = []
 
     Q = A
     R = A.zeros(A.cols)
@@ -1362,7 +1355,7 @@ def _QRdecomposition_optional(M, normalize=True):
             Q[:, j] -= Q[:, i] * R[i, j]
 
         Q[:, j] = dps(Q[:, j])
-        if Q[:, j].is_zero_matrix is False:
+        if Q[:, j].is_zero_matrix is not True:
             ranked.append(j)
             R[j, j] = M.one
 
@@ -1407,7 +1400,7 @@ def _QRdecomposition(M):
 
     - Augment the $Q$ matrix with columns that are orthogonal to every
       other columns and make it square.
-    - Augument the $R$ matrix with zero rows to make it have the same
+    - Augment the $R$ matrix with zero rows to make it have the same
       shape as the original matrix.
 
     The procedure will be illustrated in the examples section.
@@ -1481,11 +1474,11 @@ def _QRdecomposition(M):
     decomposition, you should augment $Q$ with an another orthogonal
     column.
 
-    You are able to append an arbitrary standard basis that are linearly
-    independent to every other columns and you can run the Gram-Schmidt
+    You are able to append an identity matrix,
+    and you can run the Gram-Schmidt
     process to make them augmented as orthogonal basis.
 
-    >>> Q_aug = Q.row_join(Matrix([0, 0, 1]))
+    >>> Q_aug = Q.row_join(Matrix.eye(3))
     >>> Q_aug = Q_aug.QRdecomposition()[0]
     >>> Q_aug
     Matrix([
@@ -1556,13 +1549,13 @@ def _QRdecomposition(M):
 
     sympy.matrices.dense.DenseMatrix.cholesky
     sympy.matrices.dense.DenseMatrix.LDLdecomposition
-    sympy.matrices.matrices.MatrixBase.LUdecomposition
+    sympy.matrices.matrixbase.MatrixBase.LUdecomposition
     QRsolve
     """
     return _QRdecomposition_optional(M, normalize=True)
 
 def _upper_hessenberg_decomposition(A):
-    """Converts a matrix into Hessenberg matrix H
+    """Converts a matrix into Hessenberg matrix H.
 
     Returns 2 matrices H, P s.t.
     $P H P^{T} = A$, where H is an upper hessenberg matrix

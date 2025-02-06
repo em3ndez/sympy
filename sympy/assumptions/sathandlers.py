@@ -120,8 +120,7 @@ class ClassFactRegistry:
 
     Here, we register the facts for ``Abs``.
 
-    >>> from sympy import Abs, Q
-    >>> from sympy.logic.boolalg import Equivalent
+    >>> from sympy import Abs, Equivalent, Q
     >>> from sympy.assumptions.sathandlers import ClassFactRegistry
     >>> reg = ClassFactRegistry()
     >>> @reg.register(Abs)
@@ -183,10 +182,9 @@ class ClassFactRegistry:
     def __call__(self, expr):
         ret = set()
 
-        handlers1, handlers2 = self[expr.func]
+        handlers1, handlers2 = self[type(expr)]
 
-        for h in handlers1:
-            ret.add(h(expr))
+        ret.update(h(expr) for h in handlers1)
         for h in handlers2:
             ret.update(h(expr))
         return ret

@@ -1,8 +1,20 @@
 """Quantum mechanical angular momemtum."""
 
-from sympy import (Add, binomial, cos, exp, Expr, factorial, I, Integer, Mul,
-                   pi, Rational, S, sin, simplify, sqrt, Sum, symbols, sympify,
-                   Tuple, Dummy)
+from sympy.concrete.summations import Sum
+from sympy.core.add import Add
+from sympy.core.containers import Tuple
+from sympy.core.expr import Expr
+from sympy.core.numbers import int_valued
+from sympy.core.mul import Mul
+from sympy.core.numbers import (I, Integer, Rational, pi)
+from sympy.core.singleton import S
+from sympy.core.symbol import (Dummy, symbols)
+from sympy.core.sympify import sympify
+from sympy.functions.combinatorial.factorials import (binomial, factorial)
+from sympy.functions.elementary.exponential import exp
+from sympy.functions.elementary.miscellaneous import sqrt
+from sympy.functions.elementary.trigonometric import (cos, sin)
+from sympy.simplify.simplify import simplify
 from sympy.matrices import zeros
 from sympy.printing.pretty.stringpict import prettyForm, stringPict
 from sympy.printing.pretty.pretty_symbology import pretty_symbol
@@ -131,7 +143,7 @@ class SpinOpBase:
     def _apply_operator_TensorProduct(self, tp, **options):
         # Uncoupling operator is only easily found for coordinate basis spin operators
         # TODO: add methods for uncoupling operators
-        if not (isinstance(self, JxOp) or isinstance(self, JyOp) or isinstance(self, JzOp)):
+        if not isinstance(self, (JxOp, JyOp, JzOp)):
             raise NotImplementedError
         result = []
         for n in range(len(tp.args)):
@@ -850,12 +862,12 @@ class WignerD(Expr):
         return WignerD(*self.args, **hints)
 
     def _eval_wignerd(self):
-        j = sympify(self.j)
-        m = sympify(self.m)
-        mp = sympify(self.mp)
-        alpha = sympify(self.alpha)
-        beta = sympify(self.beta)
-        gamma = sympify(self.gamma)
+        j = self.j
+        m = self.m
+        mp = self.mp
+        alpha = self.alpha
+        beta = self.beta
+        gamma = self.gamma
         if alpha == 0 and beta == 0 and gamma == 0:
             return KroneckerDelta(m, mp)
         if not j.is_number:
@@ -1359,13 +1371,13 @@ class CoupledSpinState(SpinState):
         else:
             raise TypeError("CoupledSpinState only takes 3 or 4 arguments, got: %s" % (len(jcoupling) + 3) )
         # Check arguments have correct form
-        if not (isinstance(jn, list) or isinstance(jn, tuple) or isinstance(jn, Tuple)):
+        if not isinstance(jn, (list, tuple, Tuple)):
             raise TypeError('jn must be Tuple, list or tuple, got %s' %
                             jn.__class__.__name__)
-        if not (isinstance(jcoupling, list) or isinstance(jcoupling, tuple) or isinstance(jcoupling, Tuple)):
+        if not isinstance(jcoupling, (list, tuple, Tuple)):
             raise TypeError('jcoupling must be Tuple, list or tuple, got %s' %
                             jcoupling.__class__.__name__)
-        if not all(isinstance(term, list) or isinstance(term, tuple) or isinstance(term, Tuple) for term in jcoupling):
+        if not all(isinstance(term, (list, tuple, Tuple)) for term in jcoupling):
             raise TypeError(
                 'All elements of jcoupling must be list, tuple or Tuple')
         if not len(jn) - 1 == len(jcoupling):
@@ -1401,7 +1413,7 @@ class CoupledSpinState(SpinState):
                 if abs(j1 - j2) > j3:
                     raise ValueError("All couplings must have |j1+j2| <= j3, "
                         "in coupling number %d got j1,j2,j3: %d,%d,%d" % (n + 1, j1, j2, j3))
-                if int(j1 + j2) == j1 + j2:
+                if int_valued(j1 + j2):
                     pass
             jvals[min(n1 + n2) - 1] = j3
         if len(jcoupling) > 0 and jcoupling[-1][2] != j:
@@ -1844,10 +1856,10 @@ def couple(expr, jcoupling_list=None):
     a = expr.atoms(TensorProduct)
     for tp in a:
         # Allow other tensor products to be in expression
-        if not all([ isinstance(state, SpinState) for state in tp.args]):
+        if not all(isinstance(state, SpinState) for state in tp.args):
             continue
         # If tensor product has all spin states, raise error for invalid tensor product state
-        if not all([state.__class__ is tp.args[0].__class__ for state in tp.args]):
+        if not all(state.__class__ is tp.args[0].__class__ for state in tp.args):
             raise TypeError('All states must be the same basis')
         expr = expr.subs(tp, _couple(tp, jcoupling_list))
     return expr
@@ -1869,9 +1881,9 @@ def _couple(tp, jcoupling_list):
                         (len(states) - 1, len(jcoupling_list)))
     if not all( len(coupling) == 2 for coupling in jcoupling_list):
         raise ValueError('Each coupling must define 2 spaces')
-    if any([n1 == n2 for n1, n2 in jcoupling_list]):
+    if any(n1 == n2 for n1, n2 in jcoupling_list):
         raise ValueError('Spin spaces cannot couple to themselves')
-    if all([sympify(n1).is_number and sympify(n2).is_number for n1, n2 in jcoupling_list]):
+    if all(sympify(n1).is_number and sympify(n2).is_number for n1, n2 in jcoupling_list):
         j_test = [0]*len(states)
         for n1, n2 in jcoupling_list:
             if j_test[n1 - 1] == -1 or j_test[n2 - 1] == -1:
@@ -1912,7 +1924,7 @@ def _couple(tp, jcoupling_list):
 
                 # Skip the configuration if non-physical
                 # This is a lazy check for physical states given the loose restrictions of diff_max
-                if any( [ d > m for d, m in zip(diff_list, diff_max) ] ):
+                if any(d > m for d, m in zip(diff_list, diff_max)):
                     continue
 
                 # Determine term
@@ -1930,11 +1942,11 @@ def _couple(tp, jcoupling_list):
                     cg_terms.append( (j1, m1, j2, m2, j3, m3) )
                     jcoupling.append( (min(j1_n), min(j2_n), j3) )
                 # Better checks that state is physical
-                if any([ abs(term[5]) > term[4] for term in cg_terms ]):
+                if any(abs(term[5]) > term[4] for term in cg_terms):
                     continue
-                if any([ term[0] + term[2] < term[4] for term in cg_terms ]):
+                if any(term[0] + term[2] < term[4] for term in cg_terms):
                     continue
-                if any([ abs(term[0] - term[2]) > term[4] for term in cg_terms ]):
+                if any(abs(term[0] - term[2]) > term[4] for term in cg_terms):
                     continue
                 coeff = Mul( *[ CG(*term).doit() for term in cg_terms] )
                 state = coupled_evect(j3, m3, jn, jcoupling)
@@ -2049,7 +2061,7 @@ def _uncouple(state, jn, jcoupling_list):
     elif isinstance(state, SpinState):
         if jn is None:
             raise ValueError("Must specify j-values for coupled state")
-        if not (isinstance(jn, list) or isinstance(jn, tuple)):
+        if not isinstance(jn, (list, tuple)):
             raise TypeError("jn must be list or tuple")
         if jcoupling_list is None:
             # Use default
@@ -2057,7 +2069,7 @@ def _uncouple(state, jn, jcoupling_list):
             for i in range(1, len(jn)):
                 jcoupling_list.append(
                     (1, 1 + i, Add(*[jn[j] for j in range(i + 1)])) )
-        if not (isinstance(jcoupling_list, list) or isinstance(jcoupling_list, tuple)):
+        if not isinstance(jcoupling_list, (list, tuple)):
             raise TypeError("jcoupling must be a list or tuple")
         if not len(jcoupling_list) == len(jn) - 1:
             raise ValueError("Must specify 2 fewer coupling terms than the number of j values")
@@ -2090,7 +2102,7 @@ def _uncouple(state, jn, jcoupling_list):
         result = []
         for config_num in range(tot):
             diff_list = _confignum_to_difflist(config_num, diff, n)
-            if any( [ d > p for d, p in zip(diff_list, diff_max) ] ):
+            if any(d > p for d, p in zip(diff_list, diff_max)):
                 continue
 
             cg_terms = []

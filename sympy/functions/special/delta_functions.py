@@ -1,12 +1,12 @@
-from sympy.core import S, sympify, diff
-from sympy.core.decorators import deprecated
-from sympy.core.function import Function, ArgumentIndexError
+from sympy.core import S, diff
+from sympy.core.function import DefinedFunction, ArgumentIndexError
 from sympy.core.logic import fuzzy_not
 from sympy.core.relational import Eq, Ne
 from sympy.functions.elementary.complexes import im, sign
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.polys.polyerrors import PolynomialError
-from sympy.utilities import filldedent
+from sympy.polys.polyroots import roots
+from sympy.utilities.misc import filldedent
 
 
 ###############################################################################
@@ -14,7 +14,7 @@ from sympy.utilities import filldedent
 ###############################################################################
 
 
-class DiracDelta(Function):
+class DiracDelta(DefinedFunction):
     r"""
     The DiracDelta function and its derivatives.
 
@@ -73,9 +73,9 @@ class DiracDelta(Function):
     DiracDelta(0)
     >>> diff(DiracDelta(x))
     DiracDelta(x, 1)
-    >>> diff(DiracDelta(x - 1),x,2)
+    >>> diff(DiracDelta(x - 1), x, 2)
     DiracDelta(x - 1, 2)
-    >>> diff(DiracDelta(x**2 - 1),x,2)
+    >>> diff(DiracDelta(x**2 - 1), x, 2)
     2*(2*x**2*DiracDelta(x**2 - 1, 2) + DiracDelta(x**2 - 1, 1))
     >>> DiracDelta(3*x).is_simple(x)
     True
@@ -94,7 +94,7 @@ class DiracDelta(Function):
     References
     ==========
 
-    .. [1] http://mathworld.wolfram.com/DeltaFunction.html
+    .. [1] https://mathworld.wolfram.com/DeltaFunction.html
 
     """
 
@@ -149,7 +149,7 @@ class DiracDelta(Function):
             raise ArgumentIndexError(self, argindex)
 
     @classmethod
-    def eval(cls, arg, k=0):
+    def eval(cls, arg, k=S.Zero):
         """
         Returns a simplified form or a value of DiracDelta depending on the
         argument passed by the DiracDelta object.
@@ -190,9 +190,6 @@ class DiracDelta(Function):
         >>> DiracDelta(S.NaN)
         nan
 
-        >>> DiracDelta(x).eval(1)
-        0
-
         >>> DiracDelta(x - 100).subs(x, 5)
         0
 
@@ -208,11 +205,9 @@ class DiracDelta(Function):
         arg : argument passed to DiracDelta
 
         """
-        k = sympify(k)
         if not k.is_Integer or k.is_negative:
             raise ValueError("Error: the second argument of DiracDelta must be \
             a non-negative integer, %s given instead." % (k,))
-        arg = sympify(arg)
         if arg is S.NaN:
             return S.NaN
         if arg.is_nonzero:
@@ -230,10 +225,8 @@ class DiracDelta(Function):
                 return -cls(-arg, k)
             elif k.is_even:
                 return cls(-arg, k) if k else cls(-arg)
-
-    @deprecated(useinstead="expand(diracdelta=True, wrt=x)", issue=12859, deprecated_since_version="1.1")
-    def simplify(self, x, **kwargs):
-        return self.expand(diracdelta=True, wrt=x)
+        elif k.is_zero:
+            return cls(arg, evaluate=False)
 
     def _eval_expand_diracdelta(self, **hints):
         """
@@ -269,8 +262,6 @@ class DiracDelta(Function):
         is_simple, Diracdelta
 
         """
-        from sympy.polys.polyroots import roots
-
         wrt = hints.get('wrt', None)
         if wrt is None:
             free = self.free_symbols
@@ -356,10 +347,10 @@ class DiracDelta(Function):
         Piecewise((DiracDelta(0), Eq(x, 0)), (0, True))
 
         >>> DiracDelta(x - 5).rewrite(Piecewise)
-        Piecewise((DiracDelta(0), Eq(x - 5, 0)), (0, True))
+        Piecewise((DiracDelta(0), Eq(x, 5)), (0, True))
 
         >>> DiracDelta(x**2 - 5).rewrite(Piecewise)
-           Piecewise((DiracDelta(0), Eq(x**2 - 5, 0)), (0, True))
+           Piecewise((DiracDelta(0), Eq(x**2, 5)), (0, True))
 
         >>> DiracDelta(x - 5, 4).rewrite(Piecewise)
         DiracDelta(x - 5, 4)
@@ -375,7 +366,7 @@ class DiracDelta(Function):
 
         """
         from sympy.solvers import solve
-        from sympy.functions import SingularityFunction
+        from sympy.functions.special.singularity_functions import SingularityFunction
         if self == DiracDelta(0):
             return SingularityFunction(0, 0, -1)
         if self == DiracDelta(0, 1):
@@ -390,12 +381,8 @@ class DiracDelta(Function):
             # I don't know how to handle the case for DiracDelta expressions
             # having arguments with more than one variable.
             raise TypeError(filldedent('''
-                rewrite(SingularityFunction) doesn't support
-                arguments with more that 1 variable.'''))
-
-    def _sage_(self):
-        import sage.all as sage
-        return sage.dirac_delta(self.args[0]._sage_())
+                rewrite(SingularityFunction) does not support
+                arguments with more that one variable.'''))
 
 
 ###############################################################################
@@ -403,7 +390,7 @@ class DiracDelta(Function):
 ###############################################################################
 
 
-class Heaviside(Function):
+class Heaviside(DefinedFunction):
     r"""
     Heaviside step function.
 
@@ -454,8 +441,8 @@ class Heaviside(Function):
     References
     ==========
 
-    .. [1] http://mathworld.wolfram.com/HeavisideStepFunction.html
-    .. [2] http://dlmf.nist.gov/1.16#iv
+    .. [1] https://mathworld.wolfram.com/HeavisideStepFunction.html
+    .. [2] https://dlmf.nist.gov/1.16#iv
 
     """
 
@@ -497,6 +484,14 @@ class Heaviside(Function):
             H0 = S.Half
         return super(cls, cls).__new__(cls, arg, H0, **options)
 
+    @property
+    def pargs(self):
+        """Args without default S.Half"""
+        args = self.args
+        if args[1] is S.Half:
+            args = args[:1]
+        return args
+
     @classmethod
     def eval(cls, arg, H0=S.Half):
         """
@@ -519,7 +514,7 @@ class Heaviside(Function):
         >>> from sympy.abc import x
 
         >>> Heaviside(x)
-        Heaviside(x, 1/2)
+        Heaviside(x)
 
         >>> Heaviside(19)
         1
@@ -536,9 +531,6 @@ class Heaviside(Function):
         >>> Heaviside(S.NaN)
         nan
 
-        >>> Heaviside(x).eval(42)
-        1
-
         >>> Heaviside(x - 100).subs(x, 5)
         0
 
@@ -553,8 +545,6 @@ class Heaviside(Function):
         H0 : value of Heaviside(0)
 
         """
-        H0 = sympify(H0)
-        arg = sympify(arg)
         if arg.is_extended_negative:
             return S.Zero
         elif arg.is_extended_positive:
@@ -577,23 +567,23 @@ class Heaviside(Function):
         >>> x = Symbol('x')
 
         >>> Heaviside(x).rewrite(Piecewise)
-        Piecewise((0, x < 0), (1/2, Eq(x, 0)), (1, x > 0))
+        Piecewise((0, x < 0), (1/2, Eq(x, 0)), (1, True))
 
         >>> Heaviside(x,nan).rewrite(Piecewise)
-        Piecewise((0, x < 0), (nan, Eq(x, 0)), (1, x > 0))
+        Piecewise((0, x < 0), (nan, Eq(x, 0)), (1, True))
 
         >>> Heaviside(x - 5).rewrite(Piecewise)
-        Piecewise((0, x - 5 < 0), (1/2, Eq(x - 5, 0)), (1, x - 5 > 0))
+        Piecewise((0, x < 5), (1/2, Eq(x, 5)), (1, True))
 
         >>> Heaviside(x**2 - 1).rewrite(Piecewise)
-        Piecewise((0, x**2 - 1 < 0), (1/2, Eq(x**2 - 1, 0)), (1, x**2 - 1 > 0))
+        Piecewise((0, x**2 < 1), (1/2, Eq(x**2, 1)), (1, True))
 
         """
         if H0 == 0:
-            return Piecewise((0, arg <= 0), (1, arg > 0))
+            return Piecewise((0, arg <= 0), (1, True))
         if H0 == 1:
-            return Piecewise((0, arg < 0), (1, arg >= 0))
-        return Piecewise((0, arg < 0), (H0, Eq(arg, 0)), (1, arg > 0))
+            return Piecewise((0, arg < 0), (1, True))
+        return Piecewise((0, arg < 0), (H0, Eq(arg, 0)), (1, True))
 
     def _eval_rewrite_as_sign(self, arg, H0=S.Half, **kwargs):
         """
@@ -602,7 +592,7 @@ class Heaviside(Function):
         Explanation
         ===========
 
-        The value of Heaviside(0) must be 1/2 for rewritting as sign to be
+        The value of Heaviside(0) must be 1/2 for rewriting as sign to be
         strictly equivalent. For easier usage, we also allow this rewriting
         when Heaviside(0) is undefined.
 
@@ -629,10 +619,10 @@ class Heaviside(Function):
         sign(x**2 - 2*x + 1)/2 + 1/2
 
         >>> Heaviside(y).rewrite(sign)
-        Heaviside(y, 1/2)
+        Heaviside(y)
 
         >>> Heaviside(y**2 - 2*y + 1).rewrite(sign)
-        Heaviside(y**2 - 2*y + 1, 1/2)
+        Heaviside(y**2 - 2*y + 1)
 
         See Also
         ========
@@ -645,7 +635,7 @@ class Heaviside(Function):
                 ((sign(arg) + 1)/2, Ne(arg, 0)),
                 (Heaviside(0, H0=H0), True))
             pw2 = Piecewise(
-                ((sign(arg) + 1)/2, Eq(Heaviside(0, H0=H0), S(1)/2)),
+                ((sign(arg) + 1)/2, Eq(Heaviside(0, H0=H0), S.Half)),
                 (pw1, True))
             return pw2
 
@@ -656,7 +646,7 @@ class Heaviside(Function):
 
         """
         from sympy.solvers import solve
-        from sympy.functions import SingularityFunction
+        from sympy.functions.special.singularity_functions import SingularityFunction
         if self == Heaviside(0):
             return SingularityFunction(0, 0, 0)
         free = self.free_symbols
@@ -670,9 +660,5 @@ class Heaviside(Function):
             # I don't know how to handle the case for Heaviside expressions
             # having arguments with more than one variable.
             raise TypeError(filldedent('''
-                rewrite(SingularityFunction) doesn't
-                support arguments with more that 1 variable.'''))
-
-    def _sage_(self):
-        import sage.all as sage
-        return sage.heaviside(self.args[0]._sage_())
+                rewrite(SingularityFunction) does not
+                support arguments with more that one variable.'''))

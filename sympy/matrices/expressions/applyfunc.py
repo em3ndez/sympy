@@ -1,6 +1,9 @@
-from sympy.matrices.expressions import MatrixExpr
-from sympy import MatrixBase, Dummy, Lambda, Function, FunctionClass
+from sympy.core.expr import ExprBuilder
+from sympy.core.function import (Function, FunctionClass, Lambda)
+from sympy.core.symbol import Dummy
 from sympy.core.sympify import sympify, _sympify
+from sympy.matrices.expressions import MatrixExpr
+from sympy.matrices.matrixbase import MatrixBase
 
 
 class ElementwiseApplyFunction(MatrixExpr):
@@ -13,7 +16,7 @@ class ElementwiseApplyFunction(MatrixExpr):
     It can be created by calling ``.applyfunc(<function>)`` on a matrix
     expression:
 
-    >>> from sympy.matrices.expressions import MatrixSymbol
+    >>> from sympy import MatrixSymbol
     >>> from sympy.matrices.expressions.applyfunc import ElementwiseApplyFunction
     >>> from sympy import exp
     >>> X = MatrixSymbol("X", 3, 3)
@@ -49,6 +52,13 @@ class ElementwiseApplyFunction(MatrixExpr):
         if not expr.is_Matrix:
             raise ValueError("{} must be a matrix instance.".format(expr))
 
+        if expr.shape == (1, 1):
+            # Check if the function returns a matrix, in that case, just apply
+            # the function instead of creating an ElementwiseApplyFunc object:
+            ret = function(expr)
+            if isinstance(ret, MatrixExpr):
+                return ret
+
         if not isinstance(function, (FunctionClass, Lambda)):
             d = Dummy('d')
             function = Lambda(d, function(d))
@@ -82,11 +92,11 @@ class ElementwiseApplyFunction(MatrixExpr):
     def shape(self):
         return self.expr.shape
 
-    def doit(self, **kwargs):
-        deep = kwargs.get("deep", True)
+    def doit(self, **hints):
+        deep = hints.get("deep", True)
         expr = self.expr
         if deep:
-            expr = expr.doit(**kwargs)
+            expr = expr.doit(**hints)
         function = self.function
         if isinstance(function, Lambda) and function.is_identity:
             # This is a Lambda containing the identity function.
@@ -97,7 +107,7 @@ class ElementwiseApplyFunction(MatrixExpr):
             return ElementwiseApplyFunction(
                 lambda x: self.function(expr.function(x)),
                 expr.expr
-            ).doit()
+            ).doit(**hints)
         else:
             return self
 
@@ -115,7 +125,7 @@ class ElementwiseApplyFunction(MatrixExpr):
         return fdiff
 
     def _eval_derivative(self, x):
-        from sympy import hadamard_product
+        from sympy.matrices.expressions.hadamard import hadamard_product
         dexpr = self.expr.diff(x)
         fdiff = self._get_function_fdiff()
         return hadamard_product(
@@ -124,11 +134,10 @@ class ElementwiseApplyFunction(MatrixExpr):
         )
 
     def _eval_derivative_matrix_lines(self, x):
-        from sympy import Identity
+        from sympy.matrices.expressions.special import Identity
         from sympy.tensor.array.expressions.array_expressions import ArrayContraction
         from sympy.tensor.array.expressions.array_expressions import ArrayDiagonal
         from sympy.tensor.array.expressions.array_expressions import ArrayTensorProduct
-        from sympy.core.expr import ExprBuilder
 
         fdiff = self._get_function_fdiff()
         lr = self.expr._eval_derivative_matrix_lines(x)
@@ -191,5 +200,5 @@ class ElementwiseApplyFunction(MatrixExpr):
         return lr
 
     def _eval_transpose(self):
-        from sympy import Transpose
+        from sympy.matrices.expressions.transpose import Transpose
         return self.func(self.function, Transpose(self.expr).doit())

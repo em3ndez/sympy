@@ -27,7 +27,7 @@ This module defines basic kinds for core objects. Other kinds such as
 
 from collections import defaultdict
 
-from sympy.core.cache import cacheit
+from .cache import cacheit
 from sympy.multipledispatch.dispatcher import (Dispatcher,
     ambiguity_warn, ambiguity_register_error_ignore_dup,
     str_signature, RaiseNotImplementedError)
@@ -55,7 +55,7 @@ class Kind(object, metaclass=KindMeta):
 
     Kind of every object must be carefully selected so that it shows the
     intention of design. Expressions may have different kind according
-    to the kind of its arguements. For example, arguements of ``Add``
+    to the kind of its arguments. For example, arguments of ``Add``
     must have common kind since addition is group operator, and the
     resulting ``Add()`` has the same kind.
 
@@ -167,7 +167,7 @@ class _BooleanKind(Kind):
     Kind for boolean objects.
 
     SymPy's ``S.true``, ``S.false``, and built-in ``True`` and ``False``
-    have this kind. Boolean number ``1`` and ``0`` are not relevent.
+    have this kind. Boolean number ``1`` and ``0`` are not relevant.
 
     Examples
     ========
@@ -210,14 +210,13 @@ class KindDispatcher:
 
     Multiplication between numbers return number.
 
-    >>> from sympy import Mul
-    >>> from sympy.core import NumberKind
+    >>> from sympy import NumberKind, Mul
     >>> Mul._kind_dispatcher(NumberKind, NumberKind)
     NumberKind
 
     Multiplication between number and unknown-kind object returns unknown kind.
 
-    >>> from sympy.core import UndefinedKind
+    >>> from sympy import UndefinedKind
     >>> Mul._kind_dispatcher(NumberKind, UndefinedKind)
     UndefinedKind
 
@@ -322,15 +321,17 @@ class KindDispatcher:
                 prev_kind = result
 
                 t1, t2 = type(prev_kind), type(kind)
+                k1, k2 = prev_kind, kind
                 func = self._dispatcher.dispatch(t1, t2)
                 if func is None and self.commutative:
                     # try reversed order
                     func = self._dispatcher.dispatch(t2, t1)
+                    k1, k2 = k2, k1
                 if func is None:
                     # unregistered kind relation
                     result = UndefinedKind
                 else:
-                    result = func(prev_kind, kind)
+                    result = func(k1, k2)
                 if not isinstance(result, Kind):
                     raise RuntimeError(
                         "Dispatcher for {!r} and {!r} must return a Kind, but got {!r}".format(

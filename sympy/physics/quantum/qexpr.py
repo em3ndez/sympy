@@ -1,7 +1,10 @@
-from sympy import Expr, sympify, Symbol, Matrix
+from sympy.core.expr import Expr
+from sympy.core.symbol import Symbol
+from sympy.core.sympify import sympify
+from sympy.matrices.dense import Matrix
 from sympy.printing.pretty.stringpict import prettyForm
 from sympy.core.containers import Tuple
-from sympy.core.compatibility import is_sequence
+from sympy.utilities.iterables import is_sequence
 
 from sympy.physics.quantum.dagger import Dagger
 from sympy.physics.quantum.matrixutils import (
@@ -87,16 +90,12 @@ class QExpr(Expr):
     # derive from args.
 
     # The Hilbert space a quantum Object belongs to.
-    __slots__ = ('hilbert_space')
+    __slots__ = ('hilbert_space', )
 
     is_commutative = False
 
     # The separator used in printing the label.
     _label_separator = ''
-
-    @property
-    def free_symbols(self):
-        return {self}
 
     def __new__(cls, *args, **kwargs):
         """Construct a new quantum object.
@@ -213,7 +212,7 @@ class QExpr(Expr):
     # Printing
     #-------------------------------------------------------------------------
 
-    # Utilities for printing: these operate on raw sympy objects
+    # Utilities for printing: these operate on raw SymPy objects
 
     def _print_sequence(self, seq, sep, printer, *args):
         result = []
@@ -277,7 +276,7 @@ class QExpr(Expr):
         Handles the printing of any unique identifying contents of a QExpr to
         print as its contents, such as any variables or quantum numbers. The
         default is to print the label, which is almost always the args. This
-        should not include printing of any brackets or parenteses.
+        should not include printing of any brackets or parentheses.
         """
         return self._print_label(printer, *args)
 
@@ -312,13 +311,6 @@ class QExpr(Expr):
 
     def _latex(self, printer, *args):
         return self._print_contents_latex(printer, *args)
-
-    #-------------------------------------------------------------------------
-    # Methods from Basic and Expr
-    #-------------------------------------------------------------------------
-
-    def doit(self, **kw_args):
-        return self
 
     #-------------------------------------------------------------------------
     # Represent
@@ -412,6 +404,6 @@ def dispatch_method(self, basename, arg, **options):
         if result is not None:
             return result
     raise NotImplementedError(
-        "%s.%s can't handle: %r" %
+        "%s.%s cannot handle: %r" %
         (self.__class__.__name__, basename, arg)
     )

@@ -6,14 +6,15 @@ from functools import reduce
 from sympy.core.parameters import global_parameters
 from sympy.core.basic import Atom
 from sympy.core.expr import Expr
-from sympy.core.compatibility import \
-    is_sequence, as_int
+from sympy.core.numbers import int_valued
 from sympy.core.numbers import Integer
 from sympy.core.sympify import _sympify
 from sympy.matrices import zeros
 from sympy.polys.polytools import lcm
+from sympy.printing.repr import srepr
 from sympy.utilities.iterables import (flatten, has_variety, minlex,
-    has_dups, runs)
+    has_dups, runs, is_sequence)
+from sympy.utilities.misc import as_int
 from mpmath.libmp.libintmath import ifac
 from sympy.multipledispatch import dispatch
 
@@ -182,7 +183,8 @@ def _af_pow(a, n):
     Examples
     ========
 
-    >>> from sympy.combinatorics.permutations import Permutation, _af_pow
+    >>> from sympy.combinatorics import Permutation
+    >>> from sympy.combinatorics.permutations import _af_pow
     >>> p = Permutation([2, 0, 3, 1])
     >>> p.order()
     4
@@ -328,8 +330,8 @@ class Cycle(dict):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Cycle as C
-        >>> C(1, 2)(2, 3)
+        >>> from sympy.combinatorics import Cycle
+        >>> Cycle(1, 2)(2, 3)
         (1 3 2)
 
         An instance of a Cycle will automatically parse list-like
@@ -337,7 +339,7 @@ class Cycle(dict):
         flexible than the Permutation in that all elements need not
         be present:
 
-        >>> a = C(1, 2)
+        >>> a = Cycle(1, 2)
         >>> a(2, 3)
         (1 3 2)
         >>> a(2, 3)(4, 5)
@@ -360,7 +362,7 @@ class Cycle(dict):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Cycle
+        >>> from sympy.combinatorics import Cycle
         >>> p = Cycle(2, 3)(4, 5)
         >>> p.list()
         [0, 1, 3, 2, 5, 4]
@@ -434,7 +436,7 @@ class Cycle(dict):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Cycle
+        >>> from sympy.combinatorics import Cycle
         >>> Cycle(1, 2, 6)
         (1 2 6)
         """
@@ -469,19 +471,19 @@ class Cycle(dict):
 
 
 class Permutation(Atom):
-    """
+    r"""
     A permutation, alternatively known as an 'arrangement number' or 'ordering'
     is an arrangement of the elements of an ordered list into a one-to-one
     mapping with itself. The permutation of a given arrangement is given by
     indicating the positions of the elements after re-arrangement [2]_. For
-    example, if one started with elements [x, y, a, b] (in that order) and
-    they were reordered as [x, y, b, a] then the permutation would be
-    [0, 1, 3, 2]. Notice that (in SymPy) the first element is always referred
+    example, if one started with elements ``[x, y, a, b]`` (in that order) and
+    they were reordered as ``[x, y, b, a]`` then the permutation would be
+    ``[0, 1, 3, 2]``. Notice that (in SymPy) the first element is always referred
     to as 0 and the permutation uses the indices of the elements in the
-    original ordering, not the elements (a, b, etc...) themselves.
+    original ordering, not the elements ``(a, b, ...)`` themselves.
 
     >>> from sympy.combinatorics import Permutation
-    >>> from sympy.interactive import init_printing
+    >>> from sympy import init_printing
     >>> init_printing(perm_cyclic=False, pretty_print=False)
 
     Permutations Notation
@@ -498,7 +500,7 @@ class Permutation(Atom):
     [0    1    2     ... n-1]
     [p(0) p(1) p(2)  ... p(n-1)]
 
-    Since the first line is always range(n), where n is the size of p,
+    Since the first line is always ``range(n)``, where n is the size of p,
     it is sufficient to represent the permutation by the second line,
     referred to as the "array form" of the permutation. This is entered
     in brackets as the argument to the Permutation class:
@@ -534,11 +536,20 @@ class Permutation(Atom):
     -----------------------
 
     In disjoint cycle notation, only the elements that have shifted are
-    indicated. In the above case, the 2 and 1 switched places. This can
-    be entered in two ways:
+    indicated.
 
-    >>> Permutation(1, 2) == Permutation([[1, 2]]) == p
-    True
+    For example, [1, 3, 2, 0] can be represented as (0, 1, 3)(2).
+    This can be understood from the 2 line format of the given permutation.
+    In the 2-line form,
+    [0    1    2   3]
+    [1    3    2   0]
+
+    The element in the 0th position is 1, so 0 -> 1. The element in the 1st
+    position is three, so 1 -> 3. And the element in the third position is again
+    0, so 3 -> 0. Thus, 0 -> 1 -> 3 -> 0, and 2 -> 2. Thus, this can be represented
+    as 2 cycles: (0, 1, 3)(2).
+    In common notation, singular cycles are not explicitly written as they can be
+    inferred implicitly.
 
     Only the relative ordering of elements in a cycle matter:
 
@@ -559,25 +570,27 @@ class Permutation(Atom):
     >>> _ == Permutation([[1, 2]])*Permutation([[1, 3]])*Permutation([[2, 3]])
     True
 
-        Caution: when the cycles have common elements
-        between them then the order in which the
-        permutations are applied matters. The
-        convention is that the permutations are
-        applied from *right to left*. In the following, the
-        transposition of elements 2 and 3 is followed
-        by the transposition of elements 1 and 2:
+        Caution: when the cycles have common elements between them then the order
+        in which the permutations are applied matters. This module applies
+        the permutations from *left to right*.
 
         >>> Permutation(1, 2)(2, 3) == Permutation([(1, 2), (2, 3)])
         True
         >>> Permutation(1, 2)(2, 3).list()
         [0, 3, 1, 2]
 
+        In the above case, (1,2) is computed before (2,3).
+        As 0 -> 0, 0 -> 0, element in position 0 is 0.
+        As 1 -> 2, 2 -> 3, element in position 1 is 3.
+        As 2 -> 1, 1 -> 1, element in position 2 is 1.
+        As 3 -> 3, 3 -> 2, element in position 3 is 2.
+
         If the first and second elements had been
         swapped first, followed by the swapping of the second
         and third, the result would have been [0, 2, 3, 1].
-        If, for some reason, you want to apply the cycles
-        in the order they are entered, you can simply reverse
-        the order of cycles:
+        If, you want to apply the cycles in the conventional
+        right to left order, call the function with arguments in reverse order
+        as demonstrated below:
 
         >>> Permutation([(1, 2), (2, 3)][::-1]).list()
         [0, 2, 3, 1]
@@ -601,7 +614,7 @@ class Permutation(Atom):
 
     Caution: no singleton containing an element larger than the largest
     in any previous cycle can be entered. This is an important difference
-    in how Permutation and Cycle handle the __call__ syntax. A singleton
+    in how Permutation and Cycle handle the ``__call__`` syntax. A singleton
     argument at the start of a Permutation performs instantiation of the
     Permutation and is permitted:
 
@@ -664,6 +677,12 @@ class Permutation(Atom):
     ====================
 
     There are a few things to note about how Permutations are printed.
+
+    .. deprecated:: 1.6
+
+       Configuring Permutation printing by setting
+       ``Permutation.print_cyclic`` is deprecated. Users should use the
+       ``perm_cyclic`` flag to the printers, as described below.
 
     1) If you prefer one form (array or cycle) over another, you can set
     ``init_printing`` with the ``perm_cyclic`` flag.
@@ -830,7 +849,7 @@ class Permutation(Atom):
     argument ``size=6``.
 
     There is another way to do this, which is to tell the ``contains``
-    method that the number of symbols the group is on doesn't need to
+    method that the number of symbols the group is on does not need to
     match perfectly the number of symbols for the permutation:
 
     >>> G.contains(p2,strict=False)
@@ -866,7 +885,7 @@ class Permutation(Atom):
            Concrete Mathematics: A Foundation for Computer Science, 2nd ed.
            Reading, MA: Addison-Wesley, 1994.
 
-    .. [6] https://en.wikipedia.org/wiki/Permutation#Product_and_inverse
+    .. [6] https://en.wikipedia.org/w/index.php?oldid=499948155#Product_and_inverse
 
     .. [7] https://en.wikipedia.org/wiki/Lehmer_code
 
@@ -889,8 +908,8 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
-        >>> from sympy.interactive import init_printing
+        >>> from sympy.combinatorics import Permutation
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
 
         Permutations entered in array-form are left unaltered:
@@ -983,7 +1002,7 @@ class Permutation(Atom):
         temp = set(temp)
 
         if not is_cycle:
-            if any(i not in temp for i in range(len(temp))):
+            if temp != set(range(len(temp))):
                 raise ValueError('Integers 0 through %s must be present.' %
                 max(temp))
             if size is not None and temp and max(temp) + 1 > size:
@@ -1019,7 +1038,7 @@ class Permutation(Atom):
         ========
 
         >>> from sympy.combinatorics.permutations import Perm
-        >>> from sympy.interactive import init_printing
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> a = [2, 1, 3, 0]
         >>> p = Perm._af_new(a)
@@ -1031,6 +1050,12 @@ class Permutation(Atom):
         p._array_form = perm
         p._size = len(perm)
         return p
+
+    def copy(self):
+        return self.__class__(self.array_form)
+
+    def __getnewargs__(self):
+        return (self.array_form,)
 
     def _hashable_content(self):
         # the array_form (a list) is the Permutation arg, so we need to
@@ -1044,7 +1069,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([[2, 0], [3, 1]])
         >>> p.array_form
         [2, 3, 0, 1]
@@ -1066,7 +1091,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation(2, 3)(4, 5)
         >>> p.list()
         [0, 1, 3, 2, 5, 4]
@@ -1106,7 +1131,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 3, 1, 2])
         >>> p.cyclic_form
         [[1, 3, 2]]
@@ -1147,13 +1172,12 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> Permutation([0, 2, 1]).full_cyclic_form
         [[0], [1, 2]]
         """
         need = set(range(self.size)) - set(flatten(self.cyclic_form))
-        rv = self.cyclic_form
-        rv.extend([[i] for i in need])
+        rv = self.cyclic_form + [[i] for i in need]
         rv.sort()
         return rv
 
@@ -1190,7 +1214,7 @@ class Permutation(Atom):
         [0, 1, 2, 3]
         """
         a = self.array_form
-        return [i for i, e in enumerate(a) if a[i] != i]
+        return [i for i, e in enumerate(a) if e != i]
 
     def __add__(self, other):
         """Return permutation that is other higher in rank than self.
@@ -1201,7 +1225,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> I = Permutation([0, 1, 2, 3])
         >>> a = Permutation([2, 1, 3, 0])
         >>> I + a.rank() == a
@@ -1239,7 +1263,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
 
         >>> a, b = [1, 0, 2], [0, 2, 1]
         >>> a = Permutation(a); b = Permutation(b)
@@ -1323,7 +1347,7 @@ class Permutation(Atom):
         It is acceptable for the arrays to have different lengths; the shorter
         one will be padded to match the longer one:
 
-        >>> from sympy.interactive import init_printing
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> b*Permutation([1, 0])
         Permutation([1, 2, 0])
@@ -1368,7 +1392,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> a = Permutation([1, 4, 3, 0, 2, 5])
         >>> b = Permutation([0, 1, 2, 3, 4, 5])
         >>> a.commutes_with(b)
@@ -1388,8 +1412,8 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
-        >>> from sympy.interactive import init_printing
+        >>> from sympy.combinatorics import Permutation
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> p = Permutation([2, 0, 3, 1])
         >>> p.order()
@@ -1414,7 +1438,7 @@ class Permutation(Atom):
         >>> 2^p == p(2) == 9
         True
         """
-        if int(i) == i:
+        if int_valued(i):
             return self(i)
         else:
             raise NotImplementedError(
@@ -1432,7 +1456,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation(1, 2, 9)
         >>> q = Permutation(6, 9, 8)
         >>> p*q != q*p
@@ -1513,7 +1537,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([[1, 2, 3], [0, 4, 5, 6, 7]])
         >>> t = p.transpositions()
         >>> t
@@ -1537,8 +1561,7 @@ class Permutation(Atom):
                 res.append(tuple(x))
             elif nx > 2:
                 first = x[0]
-                for y in x[nx - 1:0:-1]:
-                    res.append((first, y))
+                res.extend((first, y) for y in x[nx - 1:0:-1])
         return res
 
     @classmethod
@@ -1574,8 +1597,8 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
-        >>> from sympy.interactive import init_printing
+        >>> from sympy.combinatorics import Permutation
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> p = Permutation([[2, 0], [3, 1]])
         >>> ~p
@@ -1600,7 +1623,6 @@ class Permutation(Atom):
         yield from self.array_form
 
     def __repr__(self):
-        from sympy.printing.repr import srepr
         return srepr(self)
 
     def __call__(self, *i):
@@ -1610,7 +1632,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([[2, 0], [3, 1]])
         >>> p.array_form
         [2, 3, 0, 1]
@@ -1678,7 +1700,7 @@ class Permutation(Atom):
         =====
 
         Any permutation can be defined as a bijective function
-        $\sigma : \{ 0, 1, ..., n-1 \} \rightarrow \{ 0, 1, ..., n-1 \}$
+        $\sigma : \{ 0, 1, \dots, n-1 \} \rightarrow \{ 0, 1, \dots, n-1 \}$
         where $n$ denotes the size of the permutation.
 
         The definition may even be extended for any set with distinctive
@@ -1689,7 +1711,7 @@ class Permutation(Atom):
 
         This function is similar to the ``__call__`` magic, however,
         ``__call__`` magic already has some other applications like
-        permuting an array or attatching new cycles, which would
+        permuting an array or attaching new cycles, which would
         not always be mathematically consistent.
 
         This also guarantees that the return type is a SymPy integer,
@@ -1719,7 +1741,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([2, 3, 1, 0])
         >>> p = Permutation([2, 3, 1, 0]); p.rank()
         17
@@ -1760,8 +1782,8 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
-        >>> from sympy.interactive import init_printing
+        >>> from sympy.combinatorics import Permutation
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> Permutation.unrank_nonlex(4, 5)
         Permutation([2, 0, 3, 1])
@@ -1793,7 +1815,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 1, 2, 3])
         >>> p.rank_nonlex()
         23
@@ -1828,8 +1850,8 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
-        >>> from sympy.interactive import init_printing
+        >>> from sympy.combinatorics import Permutation
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> p = Permutation([2, 0, 3, 1]); p.rank_nonlex()
         5
@@ -1855,7 +1877,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 1, 2, 3])
         >>> p.rank()
         0
@@ -1868,7 +1890,7 @@ class Permutation(Atom):
 
         next_lex, unrank_lex, cardinality, length, order, size
         """
-        if not self._rank is None:
+        if self._rank is not None:
             return self._rank
         rank = 0
         rho = self.array_form[:]
@@ -1893,7 +1915,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 1, 2, 3])
         >>> p.cardinality
         24
@@ -1919,7 +1941,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 1, 2, 3])
         >>> p.parity()
         0
@@ -1945,7 +1967,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 1, 2, 3])
         >>> p.is_even
         True
@@ -1968,7 +1990,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 1, 2, 3])
         >>> p.is_odd
         False
@@ -2038,7 +2060,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([])
         >>> p.is_Identity
         True
@@ -2068,7 +2090,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([4, 0, 1, 3, 2])
         >>> p.ascents()
         [1, 2]
@@ -2090,7 +2112,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([4, 0, 1, 3, 2])
         >>> p.descents()
         [0, 3]
@@ -2104,14 +2126,14 @@ class Permutation(Atom):
         pos = [i for i in range(len(a) - 1) if a[i] > a[i + 1]]
         return pos
 
-    def max(self):
+    def max(self) -> int:
         """
         The maximum element moved by the permutation.
 
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([1, 0, 2, 3, 4])
         >>> p.max()
         1
@@ -2121,21 +2143,19 @@ class Permutation(Atom):
 
         min, descents, ascents, inversions
         """
-        max = 0
         a = self.array_form
-        for i in range(len(a)):
-            if a[i] != i and a[i] > max:
-                max = a[i]
-        return max
+        if not a:
+            return 0
+        return max(_a for i, _a in enumerate(a) if _a != i)
 
-    def min(self):
+    def min(self) -> int:
         """
         The minimum element moved by the permutation.
 
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 1, 4, 3, 2])
         >>> p.min()
         2
@@ -2146,11 +2166,9 @@ class Permutation(Atom):
         max, descents, ascents, inversions
         """
         a = self.array_form
-        min = len(a)
-        for i in range(len(a)):
-            if a[i] != i and a[i] < min:
-                min = a[i]
-        return min
+        if not a:
+            return 0
+        return min(_a for i, _a in enumerate(a) if _a != i)
 
     def inversions(self):
         """
@@ -2169,7 +2187,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 1, 2, 3, 4, 5])
         >>> p.inversions()
         0
@@ -2184,7 +2202,7 @@ class Permutation(Atom):
         References
         ==========
 
-        .. [1] http://www.cp.eng.chula.ac.th/~piak/teaching/algo/algo2008/count-inv.htm
+        .. [1] https://www.cp.eng.chula.ac.th/~prabhas//teaching/algo/algo2008/count-inv.htm
 
         """
         inversions = 0
@@ -2221,8 +2239,8 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
-        >>> from sympy.interactive import init_printing
+        >>> from sympy.combinatorics import Permutation
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> p = Permutation([0, 2, 3, 1])
         >>> x = Permutation([2, 0, 3, 1])
@@ -2245,7 +2263,7 @@ class Permutation(Atom):
         References
         ==========
 
-        https://en.wikipedia.org/wiki/Commutator
+        .. [1] https://en.wikipedia.org/wiki/Commutator
         """
 
         a = self.array_form
@@ -2271,7 +2289,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 1, 2])
         >>> p.inversions()
         0
@@ -2302,8 +2320,8 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
-        >>> from sympy.interactive import init_printing
+        >>> from sympy.combinatorics import Permutation
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> p = Permutation([3, 1, 5, 2, 4, 0])
         >>> p.order()
@@ -2400,14 +2418,14 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([3, 0, 2, 1, 4])
         >>> p.index()
         2
         """
         a = self.array_form
 
-        return sum([j for j in range(len(a) - 1) if a[j] > a[j + 1]])
+        return sum(j for j in range(len(a) - 1) if a[j] > a[j + 1])
 
     def runs(self):
         """
@@ -2419,7 +2437,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([2, 5, 7, 3, 6, 0, 1, 4, 8])
         >>> p.runs()
         [[2, 5, 7], [3, 6], [0, 1, 4, 8]]
@@ -2442,7 +2460,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([4, 8, 0, 7, 1, 5, 3, 6, 2])
         >>> p.inversion_vector()
         [4, 7, 0, 5, 0, 2, 1, 1]
@@ -2489,7 +2507,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 1, 2, 3])
         >>> p.rank_trotterjohnson()
         0
@@ -2531,8 +2549,8 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
-        >>> from sympy.interactive import init_printing
+        >>> from sympy.combinatorics import Permutation
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> Permutation.unrank_trotterjohnson(5, 10)
         Permutation([0, 3, 1, 2, 4])
@@ -2572,8 +2590,8 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
-        >>> from sympy.interactive import init_printing
+        >>> from sympy.combinatorics import Permutation
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> p = Permutation([3, 0, 2, 1])
         >>> p.rank_trotterjohnson()
@@ -2624,8 +2642,8 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
-        >>> from sympy.interactive import init_printing
+        >>> from sympy.combinatorics import Permutation
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> p = Permutation.josephus(3, 6, 1)
         >>> p
@@ -2665,7 +2683,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([2, 0, 4, 3, 1])
         >>> q = Permutation([3, 1, 2, 4, 0])
         >>> p.get_precedence_distance(q)
@@ -2706,7 +2724,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation.josephus(3, 6, 1)
         >>> p.get_adjacency_matrix()
         Matrix([
@@ -2753,7 +2771,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 3, 1, 2, 4])
         >>> q = Permutation.josephus(4, 5, 2)
         >>> p.get_adjacency_distance(q)
@@ -2788,7 +2806,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> p = Permutation([0, 3, 1, 2, 4])
         >>> q = Permutation.josephus(4, 5, 2)
         >>> r = Permutation([3, 1, 4, 0, 2])
@@ -2806,7 +2824,7 @@ class Permutation(Atom):
         b = other.array_form
         if len(a) != len(b):
             raise ValueError("The permutations must be of the same size.")
-        return sum([abs(a[i] - b[i]) for i in range(len(a))])
+        return sum(abs(a[i] - b[i]) for i in range(len(a)))
 
     @classmethod
     def josephus(cls, m, n, s=1):
@@ -2843,7 +2861,7 @@ class Permutation(Atom):
 
         .. [1] https://en.wikipedia.org/wiki/Flavius_Josephus
         .. [2] https://en.wikipedia.org/wiki/Josephus_problem
-        .. [3] http://www.wou.edu/~burtonl/josephus.html
+        .. [3] https://web.archive.org/web/20171008094331/http://www.wou.edu/~burtonl/josephus.html
 
         """
         from collections import deque
@@ -2865,8 +2883,8 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
-        >>> from sympy.interactive import init_printing
+        >>> from sympy.combinatorics import Permutation
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> Permutation.from_inversion_vector([3, 2, 1, 0, 0])
         Permutation([3, 2, 1, 0, 4, 5])
@@ -2895,7 +2913,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
         >>> Permutation.random(2) in (Permutation([1, 0]), Permutation([0, 1]))
         True
 
@@ -2912,8 +2930,8 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
-        >>> from sympy.interactive import init_printing
+        >>> from sympy.combinatorics import Permutation
+        >>> from sympy import init_printing
         >>> init_printing(perm_cyclic=False, pretty_print=False)
         >>> a = Permutation.unrank_lex(5, 10)
         >>> a.rank()
@@ -2959,7 +2977,7 @@ class Permutation(Atom):
         Examples
         ========
 
-        >>> from sympy.combinatorics.permutations import Permutation
+        >>> from sympy.combinatorics import Permutation
 
         Increasing the size of a permutation:
 
@@ -2979,7 +2997,7 @@ class Permutation(Atom):
         >>> p.resize(2)
         Traceback (most recent call last):
         ...
-        ValueError: The permutation can not be resized to 2 because the
+        ValueError: The permutation cannot be resized to 2 because the
         cycle (0, 1, 2) may break.
         """
         aform = self.array_form
@@ -2997,7 +3015,7 @@ class Permutation(Atom):
                 if cycle_min <= n-1:
                     if cycle_max > n-1:
                         raise ValueError(
-                            "The permutation can not be resized to {} "
+                            "The permutation cannot be resized to {} "
                             "because the cycle {} may break."
                             .format(n, tuple(cycle)))
 

@@ -36,7 +36,7 @@ Wrapping the unexpanded expression gives the expected behavior:
     >>> e(4, 5), e(5, 4)
     (-1.0, 1.0)
 
-The callable returned from autowrap() is a binary python function, not a
+The callable returned from autowrap() is a binary Python function, not a
 SymPy object.  If it is desired to use the compiled function in symbolic
 expressions, it is better to use binary_function() which returns a SymPy
 Function object.  The binary callable is attached as the _imp_ attribute and
@@ -60,7 +60,7 @@ When is this useful?
        compiled binary should be significantly faster than SymPy's .evalf()
 
     3) If you are generating code with the codegen utility in order to use
-       it in another project, the automatic python wrappers let you test the
+       it in another project, the automatic Python wrappers let you test the
        binaries immediately from within SymPy.
 
     4) To create customized ufuncs for use with numpy arrays.
@@ -76,7 +76,7 @@ When is this module NOT the best approach?
        tempdir="path/to/files/".
 
     2) If the array computation can be handled easily by numpy, and you
-       don't need the binaries for another project.
+       do not need the binaries for another project.
 
 """
 
@@ -89,7 +89,6 @@ from string import Template
 from warnings import warn
 
 from sympy.core.cache import cacheit
-from sympy.core.compatibility import iterable
 from sympy.core.function import Lambda
 from sympy.core.relational import Eq
 from sympy.core.symbol import Dummy, Symbol
@@ -98,6 +97,7 @@ from sympy.utilities.codegen import (make_routine, get_code_generator,
                                      OutputArgument, InOutArgument,
                                      InputArgument, CodeGenArgumentListError,
                                      Result, ResultBase, C99CodeGen)
+from sympy.utilities.iterables import iterable
 from sympy.utilities.lambdify import implemented_function
 from sympy.utilities.decorator import doctest_depends_on
 
@@ -234,12 +234,8 @@ class CythonCodeWrapper(CodeWrapper):
     """Wrapper that uses Cython"""
 
     setup_template = """\
-try:
-    from setuptools import setup
-    from setuptools import Extension
-except ImportError:
-    from distutils.core import setup
-    from distutils.extension import Extension
+from setuptools import setup
+from setuptools import Extension
 from Cython.Build import cythonize
 cy_opts = {cythonize_options}
 {np_import}
@@ -253,6 +249,8 @@ ext_mods = [Extension(
 )]
 setup(ext_modules=cythonize(ext_mods, **cy_opts))
 """
+
+    _cythonize_options = {'compiler_directives':{'language_level' : "3"}}
 
     pyx_imports = (
         "import numpy as np\n"
@@ -273,7 +271,7 @@ setup(ext_modules=cythonize(ext_mods, **cy_opts))
     def __init__(self, *args, **kwargs):
         """Instantiates a Cython code wrapper.
 
-        The following optional parameters get passed to ``distutils.Extension``
+        The following optional parameters get passed to ``setuptools.Extension``
         for building the Python extension module. Read its documentation to
         learn more.
 
@@ -309,7 +307,7 @@ setup(ext_modules=cythonize(ext_mods, **cy_opts))
         self._extra_compile_args = kwargs.pop('extra_compile_args', [])
         self._extra_compile_args.append(self.std_compile_flag)
         self._extra_link_args = kwargs.pop('extra_link_args', [])
-        self._cythonize_options = kwargs.pop('cythonize_options', {})
+        self._cythonize_options = kwargs.pop('cythonize_options', self._cythonize_options)
 
         self._need_numpy = False
 
@@ -356,7 +354,7 @@ setup(ext_modules=cythonize(ext_mods, **cy_opts))
         return getattr(mod, name + '_c')
 
     def dump_pyx(self, routines, f, prefix):
-        """Write a Cython file with python wrappers
+        """Write a Cython file with Python wrappers
 
         This file contains all the definitions of the routines in c code and
         refers to the header file.
@@ -547,7 +545,7 @@ def _validate_backend_language(backend, language):
 @doctest_depends_on(exe=('f2py', 'gfortran'), modules=('numpy',))
 def autowrap(expr, language=None, backend='f2py', tempdir=None, args=None,
              flags=None, verbose=False, helpers=None, code_gen=None, **kwargs):
-    """Generates python callable binaries based on the math expression.
+    """Generates Python callable binaries based on the math expression.
 
     Parameters
     ==========
@@ -574,13 +572,13 @@ def autowrap(expr, language=None, backend='f2py', tempdir=None, args=None,
         If True, autowrap will not mute the command line backends. This can be
         helpful for debugging.
     helpers : 3-tuple or iterable of 3-tuples, optional
-        Used to define auxiliary expressions needed for the main expr. If the
-        main expression needs to call a specialized function it should be
-        passed in via ``helpers``. Autowrap will then make sure that the
-        compiled main expression can link to the helper routine. Items should
-        be 3-tuples with (<function_name>, <sympy_expression>,
-        <argument_tuple>). It is mandatory to supply an argument sequence to
-        helper routines.
+        Used to define auxiliary functions needed for the main expression.
+        Each tuple should be of the form (name, expr, args) where:
+
+        - name : str, the function name
+        - expr : sympy expression, the function
+        - args : iterable, the function arguments (can be any iterable of symbols)
+
     code_gen : CodeGen instance
         An instance of a CodeGen subclass. Overrides ``language``.
     include_dirs : [string]
@@ -604,12 +602,43 @@ def autowrap(expr, language=None, backend='f2py', tempdir=None, args=None,
     Examples
     ========
 
+    Basic usage:
+
     >>> from sympy.abc import x, y, z
     >>> from sympy.utilities.autowrap import autowrap
     >>> expr = ((x - y + z)**(13)).expand()
     >>> binary_func = autowrap(expr)
     >>> binary_func(1, 4, 2)
     -1.0
+
+    Using helper functions:
+
+    >>> from sympy.abc import x, t
+    >>> from sympy import Function
+    >>> helper_func = Function('helper_func')  # Define symbolic function
+    >>> expr = 3*x + helper_func(t)  # Main expression using helper function
+    >>> # Define helper_func(x) = 4*x using f2py backend
+    >>> binary_func = autowrap(expr, args=[x, t],
+    ...                       helpers=('helper_func', 4*x, [x]))
+    >>> binary_func(2, 5)  # 3*2 + helper_func(5) = 6 + 20
+    26.0
+    >>> # Same example using cython backend
+    >>> binary_func = autowrap(expr, args=[x, t], backend='cython',
+    ...                       helpers=[('helper_func', 4*x, [x])])
+    >>> binary_func(2, 5)  # 3*2 + helper_func(5) = 6 + 20
+    26.0
+
+    Type handling example:
+
+    >>> import numpy as np
+    >>> expr = x + y
+    >>> f_cython = autowrap(expr, backend='cython')
+    >>> f_cython(1, 2)  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+      ...
+    TypeError: Argument '_x' has incorrect type (expected numpy.ndarray, got int)
+    >>> f_cython(np.array([1.0]), np.array([2.0]))
+    array([ 3.])
 
     """
     if language:
@@ -663,7 +692,7 @@ def autowrap(expr, language=None, backend='f2py', tempdir=None, args=None,
 
 @doctest_depends_on(exe=('f2py', 'gfortran'), modules=('numpy',))
 def binary_function(symfunc, expr, **kwargs):
-    """Returns a sympy function with expr as binary implementation
+    """Returns a SymPy function with expr as binary implementation
 
     This is a convenience function that automates the steps needed to
     autowrap the SymPy expression and attaching it to a Function object
@@ -672,9 +701,9 @@ def binary_function(symfunc, expr, **kwargs):
     Parameters
     ==========
 
-    symfunc : sympy Function
+    symfunc : SymPy Function
         The function to bind the callable to.
-    expr : sympy Expression
+    expr : SymPy Expression
         The expression used to generate the function.
     kwargs : dict
         Any kwargs accepted by autowrap.
@@ -716,7 +745,11 @@ static PyMethodDef ${module}Methods[] = {
 _ufunc_outcalls = Template("*((double *)out${outnum}) = ${funcname}(${call_args});")
 
 _ufunc_body = Template("""\
+#ifdef NPY_1_19_API_VERSION
+static void ${funcname}_ufunc(char **args, const npy_intp *dimensions, const npy_intp* steps, void* data)
+#else
 static void ${funcname}_ufunc(char **args, npy_intp *dimensions, npy_intp* steps, void* data)
+#endif
 {
     npy_intp i;
     npy_intp n = dimensions[0];
@@ -783,20 +816,17 @@ ufunc${ind} = PyUFunc_FromFuncAndData(${funcname}_funcs, ${funcname}_data, ${fun
     Py_DECREF(ufunc${ind});""")
 
 _ufunc_setup = Template("""\
-def configuration(parent_package='', top_path=None):
-    import numpy
-    from numpy.distutils.misc_util import Configuration
+from setuptools.extension import Extension
+from setuptools import setup
 
-    config = Configuration('',
-                           parent_package,
-                           top_path)
-    config.add_extension('${module}', sources=['${module}.c', '${filename}.c'])
-
-    return config
+from numpy import get_include
 
 if __name__ == "__main__":
-    from numpy.distutils.core import setup
-    setup(configuration=configuration)""")
+    setup(ext_modules=[
+        Extension('${module}',
+                  sources=['${module}.c', '${filename}.c'],
+                  include_dirs=[get_include()])])
+""")
 
 
 class UfuncifyCodeWrapper(CodeWrapper):
@@ -881,7 +911,7 @@ class UfuncifyCodeWrapper(CodeWrapper):
         f.write(setup)
 
     def dump_c(self, routines, f, prefix, funcname=None):
-        """Write a C file with python wrappers
+        """Write a C file with Python wrappers
 
         This file contains all the definitions of the routines in c code.
 
@@ -1024,14 +1054,14 @@ def ufuncify(args, expr, language=None, backend='numpy', tempdir=None,
     verbose : bool, optional
         If True, autowrap will not mute the command line backends. This can
         be helpful for debugging.
-    helpers : iterable, optional
-        Used to define auxiliary expressions needed for the main expr. If
-        the main expression needs to call a specialized function it should
-        be put in the ``helpers`` iterable. Autowrap will then make sure
-        that the compiled main expression can link to the helper routine.
-        Items should be tuples with (<funtion_name>, <sympy_expression>,
-        <arguments>). It is mandatory to supply an argument sequence to
-        helper routines.
+    helpers : 3-tuple or iterable of 3-tuples, optional
+        Used to define auxiliary functions needed for the main expression.
+        Each tuple should be of the form (name, expr, args) where:
+
+        - name : str, the function name
+        - expr : sympy expression, the function
+        - args : iterable, the function arguments (can be any iterable of symbols)
+
     kwargs : dict
         These kwargs will be passed to autowrap if the `f2py` or `cython`
         backend is used and ignored if the `numpy` backend is used.
@@ -1048,10 +1078,12 @@ def ufuncify(args, expr, language=None, backend='numpy', tempdir=None,
     References
     ==========
 
-    .. [1] http://docs.scipy.org/doc/numpy/reference/ufuncs.html
+    .. [1] https://numpy.org/doc/stable/reference/ufuncs.html
 
     Examples
     ========
+
+    Basic usage:
 
     >>> from sympy.utilities.autowrap import ufuncify
     >>> from sympy.abc import x, y
@@ -1063,6 +1095,18 @@ def ufuncify(args, expr, language=None, backend='numpy', tempdir=None,
     array([  3.,   6.,  11.])
     >>> f(np.arange(5), 3)
     array([  3.,   4.,   7.,  12.,  19.])
+
+    Using helper functions:
+
+    >>> from sympy import Function
+    >>> helper_func = Function('helper_func')  # Define symbolic function
+    >>> expr = x**2 + y*helper_func(x)  # Main expression using helper function
+    >>> # Define helper_func(x) = x**3
+    >>> f = ufuncify((x, y), expr, helpers=[('helper_func', x**3, [x])])
+    >>> f([1, 2], [3, 4])
+    array([  4.,  36.])
+
+    Type handling with different backends:
 
     For the 'f2py' and 'cython' backends, inputs are required to be equal length
     1-dimensional arrays. The 'f2py' backend will perform type conversion, but

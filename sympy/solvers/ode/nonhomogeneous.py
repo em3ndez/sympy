@@ -8,17 +8,18 @@ All the functions in this file are used by more than one solvers so, instead of 
 instances in other classes for using them it is better to keep it here as separate helpers.
 
 """
-from collections import defaultdict
+from collections import Counter
 from sympy.core import Add, S
-from sympy.core.function import  diff, expand, _mexpand, expand_mul
+from sympy.core.function import diff, expand, _mexpand, expand_mul
 from sympy.core.relational import Eq
+from sympy.core.sorting import default_sort_key
 from sympy.core.symbol import Dummy, Wild
 from sympy.functions import exp, cos, cosh, im, log, re, sin, sinh, \
     atan2, conjugate
 from sympy.integrals import Integral
 from sympy.polys import (Poly, RootOf, rootof, roots)
-from sympy.simplify import collect, simplify, separatevars, powsimp, trigsimp
-from sympy.utilities import numbered_symbols, default_sort_key
+from sympy.simplify import collect, simplify, separatevars, powsimp, trigsimp # type: ignore
+from sympy.utilities import numbered_symbols
 from sympy.solvers.solvers import solve
 from sympy.matrices import wronskian
 from .subscheck import sub_func_doit
@@ -82,9 +83,7 @@ def _get_euler_characteristic_eq_sols(eq, func, match_obj):
     constants.reverse()
 
     # Create a dict root: multiplicity or charroots
-    charroots = defaultdict(int)
-    for root in chareqroots:
-        charroots[root] += 1
+    charroots = Counter(chareqroots)
     gsol = S.Zero
     ln = log
     for root, multiplicity in charroots.items():
@@ -162,7 +161,7 @@ def _solve_variation_of_parameters(eq, func, roots, homogen_sol, order, match_ob
         " solutions to the homogeneous equation necessary to apply " +
         "variation of parameters to " +
         str(eq) + " (number of terms != order)")
-    negoneterm = (-1)**(order)
+    negoneterm = S.NegativeOne**(order)
     for i in roots:
         psol += negoneterm*Integral(wronskian([sol for sol in roots if sol != i], x)*r[-1]/wr, x)*i/r[order]
         negoneterm *= -1
@@ -188,7 +187,7 @@ def _get_const_characteristic_eq_sols(r, func, order):
     chareq, symbol = S.Zero, Dummy('x')
 
     for i in r.keys():
-        if type(i) == str or i < 0:
+        if isinstance(i, str) or i < 0:
             pass
         else:
             chareq += r[i]*symbol**i
@@ -200,12 +199,10 @@ def _get_const_characteristic_eq_sols(r, func, order):
     if len(chareqroots) != order:
         chareqroots = [rootof(chareq, k) for k in range(chareq.degree())]
 
-    chareq_is_complex = not all([i.is_real for i in chareq.all_coeffs()])
+    chareq_is_complex = not all(i.is_real for i in chareq.all_coeffs())
 
     # Create a dict root: multiplicity or charroots
-    charroots = defaultdict(int)
-    for root in chareqroots:
-        charroots[root] += 1
+    charroots = Counter(chareqroots)
     # We need to keep track of terms so we can run collect() at the end.
     # This is necessary for constantsimp to work properly.
     collectterms = []
@@ -315,15 +312,15 @@ def _undetermined_coefficients_match(expr, x, func=None, eq_homogeneous=S.Zero):
     expr = powsimp(expr, combine='exp')  # exp(x)*exp(2*x + 1) => exp(3*x + 1)
     retdict = {}
 
-    def _test_term(expr, x):
+    def _test_term(expr, x) -> bool:
         r"""
         Test if ``expr`` fits the proper form for undetermined coefficients.
         """
         if not expr.has(x):
             return True
-        elif expr.is_Add:
+        if expr.is_Add:
             return all(_test_term(i, x) for i in expr.args)
-        elif expr.is_Mul:
+        if expr.is_Mul:
             if expr.has(sin, cos):
                 foundtrig = False
                 # Make sure that there is only one trig function in the args.
@@ -335,26 +332,15 @@ def _undetermined_coefficients_match(expr, x, func=None, eq_homogeneous=S.Zero):
                         else:
                             foundtrig = True
             return all(_test_term(i, x) for i in expr.args)
-        elif expr.is_Function:
-            if expr.func in (sin, cos, exp, sinh, cosh):
-                if expr.args[0].match(a*x + b):
-                    return True
-                else:
-                    return False
-            else:
-                return False
-        elif expr.is_Pow and expr.base.is_Symbol and expr.exp.is_Integer and \
+        if expr.is_Function:
+            return expr.func in (sin, cos, exp, sinh, cosh) and \
+                   bool(expr.args[0].match(a*x + b))
+        if expr.is_Pow and expr.base.is_Symbol and expr.exp.is_Integer and \
                 expr.exp >= 0:
             return True
-        elif expr.is_Pow and expr.base.is_number:
-            if expr.exp.match(a*x + b):
-                return True
-            else:
-                return False
-        elif expr.is_Symbol or expr.is_number:
-            return True
-        else:
-            return False
+        if expr.is_Pow and expr.base.is_number:
+            return bool(expr.exp.match(a*x + b))
+        return expr.is_Symbol or bool(expr.is_number)
 
     def _get_trial_set(expr, x, exprs=set()):
         r"""
@@ -408,7 +394,7 @@ def _undetermined_coefficients_match(expr, x, func=None, eq_homogeneous=S.Zero):
 
     def is_homogeneous_solution(term):
         r""" This function checks whether the given trialset contains any root
-            of homogenous equation"""
+            of homogeneous equation"""
         return expand(sub_func_doit(eq_homogeneous, func, term)).is_zero
 
     retdict['test'] = _test_term(expr, x)

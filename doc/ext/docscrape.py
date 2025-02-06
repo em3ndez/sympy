@@ -7,7 +7,6 @@ import textwrap
 import re
 import pydoc
 from collections.abc import Mapping
-import sys
 
 
 class Reader:
@@ -141,7 +140,7 @@ class NumpyDocString(Mapping):
             return True
 
         l2 = self._doc.peek(1).strip()  # ---------- or ==========
-        return l2.startswith('-'*len(l1)) or l2.startswith('='*len(l1))
+        return l2.startswith(('-' * len(l1), '=' * len(l1)))
 
     def _strip(self, doc):
         i = 0
@@ -462,11 +461,10 @@ class FunctionDoc(NumpyDocString):
             func, func_name = self.get_func()
             try:
                 # try to read signature
-                argspec = inspect.getfullargspec(func)
-                argspec = inspect.formatargspec(*argspec)
+                argspec = str(inspect.signature(func))
                 argspec = argspec.replace('*', r'\*')
                 signature = '{}{}'.format(func_name, argspec)
-            except TypeError as e:
+            except TypeError:
                 signature = '%s()' % func_name
             self['Signature'] = signature
 
@@ -482,7 +480,6 @@ class FunctionDoc(NumpyDocString):
         out = ''
 
         func, func_name = self.get_func()
-        signature = self['Signature'].replace('*', r'\*')
 
         roles = {'func': 'function',
                  'meth': 'method'}

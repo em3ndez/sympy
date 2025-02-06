@@ -1,8 +1,9 @@
-from typing import Any, Dict
+from __future__ import annotations
+from typing import Any
 
-from sympy.core.compatibility import is_sequence
 from sympy.external import import_module
 from sympy.printing.printer import Printer
+from sympy.utilities.iterables import is_sequence
 import sympy
 from functools import partial
 
@@ -16,10 +17,17 @@ if aesara:
     from aesara.tensor.elemwise import Elemwise
     from aesara.tensor.elemwise import DimShuffle
 
+    # `true_divide` replaced `true_div` in Aesara 2.8.11 (released 2023) to
+    # match NumPy
+    # XXX: Remove this when not needed to support older versions.
+    true_divide = getattr(aet, 'true_divide', None)
+    if true_divide is None:
+        true_divide = aet.true_div
+
     mapping = {
             sympy.Add: aet.add,
             sympy.Mul: aet.mul,
-            sympy.Abs: aet.abs_,
+            sympy.Abs: aet.abs,
             sympy.sign: aet.sgn,
             sympy.ceiling: aet.ceil,
             sympy.floor: aet.floor,
@@ -51,8 +59,10 @@ if aesara:
             sympy.StrictLessThan: aet.lt,
             sympy.LessThan: aet.le,
             sympy.GreaterThan: aet.ge,
-            sympy.And: aet.and_,
-            sympy.Or: aet.or_,
+            sympy.And: aet.bitwise_and,  # bitwise
+            sympy.Or: aet.bitwise_or,  # bitwise
+            sympy.Not: aet.invert,  # bitwise
+            sympy.Xor: aet.bitwise_xor,  # bitwise
             sympy.Max: aet.maximum,  # Sympy accept >2 inputs, Aesara only 2
             sympy.Min: aet.minimum,  # Sympy accept >2 inputs, Aesara only 2
             sympy.conjugate: aet.conj,
@@ -86,7 +96,7 @@ class AesaraPrinter(Printer):
     ==========
 
     cache : dict
-        A cache of Aesara variables which have been created for Sympy
+        A cache of Aesara variables which have been created for SymPy
         symbol-like objects (e.g. :class:`sympy.core.symbol.Symbol` or
         :class:`sympy.matrices.expressions.MatrixSymbol`). This is used to
         ensure that all references to a given symbol in an expression (or
@@ -97,17 +107,17 @@ class AesaraPrinter(Printer):
     printmethod = "_aesara"
 
     def __init__(self, *args, **kwargs):
-        self.cache = kwargs.pop('cache', dict())
+        self.cache = kwargs.pop('cache', {})
         super().__init__(*args, **kwargs)
 
     def _get_key(self, s, name=None, dtype=None, broadcastable=None):
-        """ Get the cache key for a Sympy object.
+        """ Get the cache key for a SymPy object.
 
         Parameters
         ==========
 
         s : sympy.core.basic.Basic
-            Sympy object to get key for.
+            SymPy object to get key for.
 
         name : str
             Name of object, if it does not have a ``name`` attribute.
@@ -120,7 +130,7 @@ class AesaraPrinter(Printer):
 
     def _get_or_create(self, s, name=None, dtype=None, broadcastable=None):
         """
-        Get the Aesara variable for a Sympy symbol from the cache, or create it
+        Get the Aesara variable for a SymPy symbol from the cache, or create it
         if it does not exist.
         """
 
@@ -137,7 +147,7 @@ class AesaraPrinter(Printer):
         if key in self.cache:
             return self.cache[key]
 
-        value = aet.tensor(name=name, dtype=dtype, broadcastable=broadcastable)
+        value = aet.tensor(name=name, dtype=dtype, shape=broadcastable)
         self.cache[key] = value
         return value
 
@@ -235,8 +245,8 @@ class AesaraPrinter(Printer):
         return aet.switch(p_cond, p_e, p_remaining)
 
     def _print_Rational(self, expr, **kwargs):
-        return aet.true_div(self._print(expr.p, **kwargs),
-                            self._print(expr.q, **kwargs))
+        return true_divide(self._print(expr.p, **kwargs),
+                           self._print(expr.q, **kwargs))
 
     def _print_Integer(self, expr, **kwargs):
         return expr.p
@@ -257,33 +267,34 @@ class AesaraPrinter(Printer):
         return expr
 
     def doprint(self, expr, dtypes=None, broadcastables=None):
-        """ Convert a Sympy expression to a Aesara graph variable.
+        """ Convert a SymPy expression to a Aesara graph variable.
 
         The ``dtypes`` and ``broadcastables`` arguments are used to specify the
         data type, dimension, and broadcasting behavior of the Aesara variables
         corresponding to the free symbols in ``expr``. Each is a mapping from
-        Sympy symbols to the value of the corresponding argument to
+        SymPy symbols to the value of the corresponding argument to
         ``aesara.tensor.var.TensorVariable``.
 
         See the corresponding `documentation page`__ for more information on
         broadcasting in Aesara.
 
-        .. __: https://aesara.readthedocs.io/en/latest/tutorial/broadcasting.html
+
+        .. __: https://aesara.readthedocs.io/en/latest/reference/tensor/shapes.html#broadcasting
 
         Parameters
         ==========
 
         expr : sympy.core.expr.Expr
-            Sympy expression to print.
+            SymPy expression to print.
 
         dtypes : dict
-            Mapping from Sympy symbols to Aesara datatypes to use when creating
+            Mapping from SymPy symbols to Aesara datatypes to use when creating
             new Aesara variables for those symbols. Corresponds to the ``dtype``
             argument to ``aesara.tensor.var.TensorVariable``. Defaults to ``'floatX'``
             for symbols not included in the mapping.
 
         broadcastables : dict
-            Mapping from Sympy symbols to the value of the ``broadcastable``
+            Mapping from SymPy symbols to the value of the ``broadcastable``
             argument to ``aesara.tensor.var.TensorVariable`` to use when creating Aesara
             variables for those symbols. Defaults to the empty tuple for symbols
             not included in the mapping (resulting in a scalar).
@@ -304,18 +315,18 @@ class AesaraPrinter(Printer):
         return self._print(expr, dtypes=dtypes, broadcastables=broadcastables)
 
 
-global_cache = {}  # type: Dict[Any, Any]
+global_cache: dict[Any, Any] = {}
 
 
 def aesara_code(expr, cache=None, **kwargs):
     """
-    Convert a Sympy expression into a Aesara graph variable.
+    Convert a SymPy expression into a Aesara graph variable.
 
     Parameters
     ==========
 
     expr : sympy.core.expr.Expr
-        Sympy expression object to convert.
+        SymPy expression object to convert.
 
     cache : dict
         Cached Aesara variables (see :class:`AesaraPrinter.cache
@@ -376,7 +387,7 @@ def dim_handling(inputs, dim=None, dims=None, broadcastables=None):
         values (tuple of ``bool``\ s).
     """
     if dim is not None:
-        return {s: (False,) * dim for s in inputs}
+        return dict.fromkeys(inputs, (False,) * dim)
 
     if dims is not None:
         maxdim = max(dims.values())
